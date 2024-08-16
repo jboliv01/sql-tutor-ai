@@ -94,6 +94,43 @@ def execute_sql():
         app.logger.error(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
+@app.route('/schema', methods=['GET'])
+def get_schema():
+    app.logger.info("Received GET request to /schema")
+    
+    motherduck_token = request.headers.get('X-MotherDuck-Token')
+    if not motherduck_token:
+        app.logger.error("MotherDuck token is not provided")
+        return jsonify({"error": "MotherDuck token is not provided"}), 400
+
+    try:
+        wrapper = LLMSQLWrapper(motherduck_token)
+        
+        # Fetch databases
+        databases = wrapper.conn.execute("SHOW DATABASES").fetchall()
+        
+        schema = {}
+        for db in databases:
+            db_name = db[0]
+            wrapper.conn.execute(f"USE {db_name}")
+            
+            # Fetch tables for each database
+            tables = wrapper.conn.execute("SHOW TABLES").fetchall()
+            
+            schema[db_name] = {}
+            for table in tables:
+                table_name = table[0]
+                
+                # Fetch columns for each table
+                columns = wrapper.conn.execute(f"DESCRIBE {table_name}").fetchall()
+                schema[db_name][table_name] = [{"name": col[0], "type": col[1]} for col in columns]
+        
+        return jsonify(schema)
+    except Exception as e:
+        app.logger.error(f"An error occurred: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/test', methods=['GET'])
 def test():
     app.logger.info("Test route accessed")
