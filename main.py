@@ -5,7 +5,7 @@ import traceback
 import logging
 
 app = Flask(__name__)
-CORS(app, resources={r"/ask": {"origins": "http://127.0.0.1:3000"}})
+CORS(app, resources={r"/ask": {"origins": "http://127.0.0.1:3000"}, r"/execute-sql": {"origins": "http://127.0.0.1:3000"}})
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -22,7 +22,7 @@ class LLMSQLWrapper:
 
     def ask_question(self, question):
         app.logger.info(f"Received question: {question}")
-        query = "SELECT * FROM external_yelp_reviews LIMIT 10"
+        query = "SELECT * FROM external_yelp_reviews LIMIT 5"
         app.logger.info(f"Executing query: {query}")
         try:
             result = self.conn.execute(query).fetchall()
@@ -55,6 +55,39 @@ def ask():
         app.logger.info(f"Processing question: {question}")
         response = wrapper.ask_question(question)
         app.logger.info("Successfully processed question")
+        return jsonify(response)
+    except Exception as e:
+        app.logger.error(f"An error occurred: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/execute-sql', methods=['POST'])
+def execute_sql():
+    app.logger.info("Received POST request to /execute-sql")
+    app.logger.debug(f"Headers: {request.headers}")
+    app.logger.debug(f"Body: {request.get_json()}")
+    
+    motherduck_token = request.headers.get('X-MotherDuck-Token')
+    if not motherduck_token:
+        app.logger.error("MotherDuck token is not provided")
+        return jsonify({"error": "MotherDuck token is not provided"}), 400
+    
+    sql = request.json.get('sql')
+    if not sql:
+        app.logger.error("SQL query is not provided")
+        return jsonify({"error": "SQL query is not provided"}), 400
+
+    app.logger.info(f"Executing SQL query: {sql}")
+
+    try:
+        wrapper = LLMSQLWrapper(motherduck_token)
+        result = wrapper.conn.execute(sql).fetchall()
+        columns = [desc[0] for desc in wrapper.conn.description]
+        response = {
+            "sql": sql,
+            "result": [dict(zip(columns, row)) for row in result]
+        }
+        app.logger.info("Successfully executed SQL query")
         return jsonify(response)
     except Exception as e:
         app.logger.error(f"An error occurred: {str(e)}")
