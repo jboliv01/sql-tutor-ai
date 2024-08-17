@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, Send, Play, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { ChevronDown, ChevronUp, Send, Play, ChevronLeft, ChevronRight, AlertCircle, BookOpen } from 'lucide-react';
 import AceEditor from 'react-ace';
 import 'ace-builds/src-noconflict/mode-sql';
 import 'ace-builds/src-noconflict/theme-github';
@@ -24,6 +24,15 @@ type SqlError = {
   details: string;
 };
 
+const SQL_PRACTICE_CATEGORIES = [
+  "Basic SQL syntax and operations",
+  "Aggregation and window functions",
+  "Data manipulation",
+  "Performance optimization",
+  "Data modeling and schema design",
+  "Advanced SQL concepts"
+];
+
 export default function Home() {
   const [question, setQuestion] = useState('');
   const [sqlQuery, setSqlQuery] = useState('SELECT * FROM external_yelp_reviews LIMIT 5');
@@ -35,9 +44,13 @@ export default function Home() {
   const [showQueryHistory, setShowQueryHistory] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [editorHeight, setEditorHeight] = useState('150px');
+  const [isPracticeModeActive, setIsPracticeModeActive] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const rowsPerPage = 5;
 
   useEffect(() => {
+    setChatHistory([{ role: 'assistant', content: "Hello! I'm your SQL Tutor AI. How can I help you today?" }]);
+    
     const updateHeight = () => {
       const height = Math.max(150, window.innerHeight * 0.3);
       setEditorHeight(`${height}px`);
@@ -55,27 +68,63 @@ export default function Home() {
     }
     return text;
   };
-
   const handleQuestionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!question.trim()) return;
+  
     setIsLoading(true);
-
+    let content = question;
+  
+    if (isPracticeModeActive) {
+      if (!selectedCategory) {
+        const categoryIndex = parseInt(question) - 1;
+        if (categoryIndex >= 0 && categoryIndex < SQL_PRACTICE_CATEGORIES.length) {
+          setSelectedCategory(SQL_PRACTICE_CATEGORIES[categoryIndex]);
+          content = `Practice SQL: ${SQL_PRACTICE_CATEGORIES[categoryIndex]}`;
+        } else {
+          setChatHistory(prev => [...prev, 
+            { role: 'user', content: question },
+            { role: 'assistant', content: "Please select a valid category number." }
+          ]);
+          setIsLoading(false);
+          setQuestion('');
+          return;
+        }
+      } else {
+        content = `Practice SQL: ${selectedCategory} - ${question}`;
+      }
+    }
+  
     setChatHistory(prev => [...prev, { role: 'user', content: question }]);
-
+  
     try {
       const res = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question })
+        body: JSON.stringify({ question: content })
       });
-
+  
       if (!res.ok) {
         throw new Error('Failed to fetch response');
       }
-
+  
       const data = await res.json();
       
-      setChatHistory(prev => [...prev, { role: 'assistant', content: data.response }]);
+      let assistantResponse = data.response;
+      if (isPracticeModeActive && selectedCategory) {
+        // Extract question and hint from the response
+        const questionMatch = assistantResponse.match(/Question:\s*([\s\S]*?)(?=\n*Hint:)/i);
+        const hintMatch = assistantResponse.match(/Hint:\s*([\s\S]*?)$/i);
+        
+        if (questionMatch && hintMatch) {
+          assistantResponse = `Question: ${questionMatch[1].trim()}\n\nHint: ${hintMatch[1].trim()}`;
+        } else {
+          // Fallback if the expected format is not found
+          assistantResponse = "I'm sorry, I couldn't format the practice question correctly. Please try again.";
+        }
+      }
+      
+      setChatHistory(prev => [...prev, { role: 'assistant', content: assistantResponse }]);
       
       if (data.query_history) {
         setQueryHistory(data.query_history);
@@ -136,6 +185,16 @@ export default function Home() {
     }
   };
 
+  const handlePracticeSQLClick = () => {
+    setIsPracticeModeActive(true);
+    setSelectedCategory(null);
+    setChatHistory(prev => [
+      ...prev,
+      { role: 'assistant', content: "What SQL concepts would you like to practice today? Please choose a category:" },
+      { role: 'assistant', content: SQL_PRACTICE_CATEGORIES.map((category, index) => `${index + 1}. ${category}`).join('\n') }
+    ]);
+  };
+
   const paginatedResults = queryResults.slice(
     (currentPage - 1) * rowsPerPage,
     currentPage * rowsPerPage
@@ -156,24 +215,39 @@ export default function Home() {
                 {chatHistory.map((msg, index) => (
                   <div key={index} className={`p-2 rounded-lg ${msg.role === 'user' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
                     <strong>{msg.role === 'user' ? 'You: ' : 'AI: '}</strong>
-                    {msg.content}
+                    <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
                   </div>
                 ))}
               </div>
-              <form onSubmit={handleQuestionSubmit} className="flex items-center">
-                <input
-                  type="text"
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  placeholder="Ask a question about SQL or query history"
-                  className="flex-grow p-2 border rounded-l focus:outline-none focus:ring-2 focus:ring-blue-300 text-gray-800"
-                />
+              <form onSubmit={handleQuestionSubmit} className="space-y-2">
+                <div className="flex items-center">
+                  <input
+                    type="text"
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    placeholder={isPracticeModeActive 
+                      ? (selectedCategory 
+                        ? "Type your answer or ask for a hint" 
+                        : "Enter the number of the category you'd like to practice")
+                      : "Ask a question about SQL or query history"}
+                    className="flex-grow p-2 border rounded-l focus:outline-none focus:ring-2 focus:ring-blue-300 text-gray-800"
+                  />
+                  <button 
+                    type="submit" 
+                    className="p-2 bg-blue-500 text-white rounded-r hover:bg-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? <span className="animate-spin">↻</span> : <Send size={20} />}
+                  </button>
+                </div>
                 <button 
-                  type="submit" 
-                  className="p-2 bg-blue-500 text-white rounded-r hover:bg-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  type="button"
+                  onClick={handlePracticeSQLClick}
+                  className="w-full p-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors focus:outline-none focus:ring-2 focus:ring-green-300 flex items-center justify-center"
                   disabled={isLoading}
                 >
-                  {isLoading ? <span className="animate-spin">↻</span> : <Send size={20} />}
+                  <BookOpen size={20} className="mr-2" />
+                  Practice SQL Questions
                 </button>
               </form>
             </div>
@@ -306,3 +380,5 @@ export default function Home() {
     </main>
   );
 }
+                          
+                          
