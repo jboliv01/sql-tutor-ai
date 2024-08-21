@@ -9,16 +9,29 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@emotion/react": "^11.13.0",
+    "@emotion/styled": "^11.13.0",
+    "@mui/icons-material": "^5.16.7",
+    "@mui/material": "^5.16.7",
+    "@mui/x-tree-view": "^7.13.0",
+    "@radix-ui/react-accordion": "^1.2.0",
+    "@radix-ui/react-slot": "^1.1.0",
     "ace-builds": "^1.35.4",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
     "lucide-react": "^0.428.0",
     "next": "14.2.5",
     "react": "^18",
     "react-ace": "^12.0.0",
     "react-dom": "^18",
+    "react-json-tree": "^0.19.0",
     "react-treeview": "^0.4.7",
-    "recharts": "^2.12.7"
+    "recharts": "^2.12.7",
+    "tailwind-merge": "^2.5.2",
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@shadcn/ui": "^0.0.4",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

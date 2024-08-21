@@ -1,14 +1,13 @@
-//src/app/api/ask/route.ts
+// src/app/api/submit-solution/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
-  console.log('API route handler started');
-  const { question, is_practice, category } = await request.json();
+  console.log('Submit solution API route handler started');
+  const { sql, results, questionId } = await request.json();
   const motherduckToken = process.env.MOTHERDUCK_TOKEN;
 
-  console.log('Request details:', { question, is_practice, category });
+  console.log('Request details:', { sql: sql.substring(0, 50) + '...', resultsCount: results.length, questionId });
   console.log('MotherDuck token exists:', !!motherduckToken);
-
   if (motherduckToken) {
     console.log('First 5 characters of token:', motherduckToken.substring(0, 5));
   }
@@ -20,13 +19,13 @@ export async function POST(request: NextRequest) {
 
   try {
     console.log('Sending request to Python backend...');
-    const response = await fetch('http://127.0.0.1:5000/ask', {
+    const response = await fetch('http://127.0.0.1:5000/api/submit-solution', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-MotherDuck-Token': motherduckToken
       },
-      body: JSON.stringify({ question, is_practice, category })
+      body: JSON.stringify({ sql, results, questionId })
     });
 
     console.log('Received response from Python backend. Status:', response.status);
@@ -39,6 +38,7 @@ export async function POST(request: NextRequest) {
 
     const data = await response.json();
     console.log('Successful response from backend:', data);
+
     return NextResponse.json(data);
   } catch (error) {
     console.error('Detailed error:', error);

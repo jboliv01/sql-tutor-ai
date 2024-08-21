@@ -1,28 +1,32 @@
-//src/api/schema/route.ts
+// src/app/api/schema/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
   const motherduckToken = process.env.MOTHERDUCK_TOKEN;
 
   if (!motherduckToken) {
-    return NextResponse.json({ error: 'MotherDuck token is not set' }, { status: 500 });
+    return NextResponse.json({ error: 'MotherDuck token is not configured' }, { status: 500 });
   }
 
   try {
-    const response = await fetch('http://127.0.0.1:5000/schema', {
-      headers: { 
-        'X-MotherDuck-Token': motherduckToken
-      }
+    const backendResponse = await fetch('http://127.0.0.1:5000/schema', {
+      method: 'GET',
+      headers: {
+        'X-MotherDuck-Token': motherduckToken,
+      },
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch schema: ${response.status} ${response.statusText}`);
+    if (!backendResponse.ok) {
+      throw new Error(`Backend request failed: ${backendResponse.status} ${backendResponse.statusText}`);
     }
 
-    const data = await response.json();
+    const data = await backendResponse.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error:', error);
-    return NextResponse.json({ error: 'An error occurred while fetching the schema.' }, { status: 500 });
+    console.error('Error fetching schema:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch schema', details: (error as Error).message },
+      { status: 500 }
+    );
   }
 }
