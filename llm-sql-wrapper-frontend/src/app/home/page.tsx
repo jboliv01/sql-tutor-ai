@@ -1,3 +1,5 @@
+//src/app/home/page.tsx
+
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronDown, ChevronUp, Play, ChevronLeft, ChevronRight, AlertCircle, MessageSquare, History, Database, Send, BookOpen } from 'lucide-react';
@@ -5,11 +7,12 @@ import AceEditor from 'react-ace';
 import ReactMarkdown from 'react-markdown';
 import 'ace-builds/src-noconflict/mode-sql';
 import 'ace-builds/src-noconflict/theme-textmate';
-import DatabaseSchema from './components/schema'; 
-import SQLPractice from './SQLPractice';
-import SubmissionHistory from './utils/submissionHistory';
-import { handleSolutionSubmit, SqlError } from './utils/sqlSolutionHandler';
-
+import DatabaseSchema from '../components/schema'; 
+import SQLPractice from '../SQLPractice';
+import SubmissionHistory from '../utils/submissionHistory';
+import { handleSolutionSubmit, SqlError } from '../utils/sqlSolutionHandler';
+import LogoutButton from '../components/Logout';
+import "../globals.css";
 type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
@@ -42,7 +45,7 @@ interface SubmissionHistoryItem {
 }
 
 export default function Home() {
-  const [sqlQuery, setSqlQuery] = useState('SELECT * FROM external_yelp_reviews LIMIT 5');
+  const [sqlQuery, setSqlQuery] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [queryHistory, setQueryHistory] = useState<QueryHistoryItem[]>([]);
   const [queryResults, setQueryResults] = useState<QueryResult[]>([]);
@@ -62,36 +65,65 @@ export default function Home() {
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
   const rowsPerPage = 5;
 
-  const fetchSchema = useCallback(async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!validateForm()) return;
+
+    setIsLoading(true);
+
     try {
-      const res = await fetch('/api/schema');
-      if (!res.ok) {
-        throw new Error('Failed to fetch schema');
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Login failed');
       }
-      const data = await res.json();
-      setSchemaData(data);
+
+      const data = await response.json();
+      console.log('Login successful:', data);
+      
+      // Redirect to the home page after successful login
+      router.push('/home');
     } catch (err) {
-      console.error('Error fetching schema:', err);
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
-  }, []);
+  };
+
+    const fetchSchema = useCallback(async () => {
+      try {
+        const res = await fetch('/api/schema');
+        if (!res.ok) {
+          throw new Error('Failed to fetch schema');
+        }
+        const data = await res.json();
+        setSchemaData(data);
+      } catch (err) {
+        console.error('Error fetching schema:', err);
+      }
+    }, []);
   
   const fetchSubmissionHistory = useCallback(async () => {
     setIsLoadingSubmissions(true);
     setSubmissionError(null);
     try {
       const res = await fetch('/api/submission-history', {
-        method: 'POST', // or 'GET'
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        method: 'GET',
+        credentials: 'include',
       });
       if (!res.ok) {
         throw new Error('Failed to fetch submission history');
       }
-      const text = await res.text();
-      console.log('Raw response:', text);
-      const data = JSON.parse(text);
-      console.log('Data received in React component:', data);
+      const data = await res.json();
       setSubmissionHistory(data);
     } catch (err) {
       console.error('Error fetching submission history:', err);
@@ -102,22 +134,44 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    setChatHistory([{ role: 'assistant', content: "Hello! I'm your SQL Tutor AI. How can I help you today?" }]);
-
+    const username = localStorage.getItem('username') || 'User';
+    const userId = localStorage.getItem('userId');
+    
+    console.log('Initial render - Username:', username, 'User ID:', userId);
+  
+    setChatHistory([{ 
+      role: 'assistant', 
+      content: `Hello ${username}! I'm your SQL Tutor AI. How can I help you today?` 
+    }]);
+  
+    if (userId) {
+      const defaultQuery = `SELECT * FROM user_${userId}.user_${userId}_data LIMIT 5`;
+      console.log('Setting default query:', defaultQuery);
+      setSqlQuery(defaultQuery);
+    } else {
+      console.log('No user ID found, not setting default query');
+    }
+  
     const updateHeight = () => {
       const height = Math.max(150, window.innerHeight * 0.3);
       setEditorHeight(`${height}px`);
     };
-
+  
     window.addEventListener('resize', updateHeight);
     updateHeight();
-
+  
     fetchSchema();
     fetchSubmissionHistory();
-
+  
     return () => window.removeEventListener('resize', updateHeight);
   }, [fetchSchema, fetchSubmissionHistory]);
+  
 
+  useEffect(() => {
+    console.log('sqlQuery updated:', sqlQuery);
+  }, [sqlQuery]);
+
+  
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -306,7 +360,7 @@ export default function Home() {
     <main className="min-h-screen bg-gray-100 p-4 pb-16">
       <div className="container mx-auto max-w-7xl">
         <h1 className="text-3xl font-bold mb-6 text-gray-800">SQL Challenge AI</h1>
-  
+          <LogoutButton />
         <div className="mb-4 flex border-b border-gray-200">
           {['chat', 'query', 'practice', 'submissions'].map((tab) => (
             <button
@@ -532,11 +586,10 @@ export default function Home() {
                   mode="sql"
                   theme="github"
                   name="practice_sql_editor"
-                  onChange={(newValue) => setSqlQuery(newValue)}
-                  fontSize={14}
-                  showPrintMargin={false}
-                  showGutter={true}
-                  highlightActiveLine={true}
+                  onChange={(newValue) => {
+                    console.log('Practice AceEditor onChange:', newValue);
+                    setSqlQuery(newValue);
+                  }}
                   value={sqlQuery}
                   setOptions={{
                     enableBasicAutocompletion: true,
