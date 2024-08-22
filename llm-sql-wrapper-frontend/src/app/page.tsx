@@ -2,9 +2,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronDown, ChevronUp, Play, ChevronLeft, ChevronRight, AlertCircle, MessageSquare, History, Database, Send, BookOpen } from 'lucide-react';
 import AceEditor from 'react-ace';
+import ReactMarkdown from 'react-markdown';
 import 'ace-builds/src-noconflict/mode-sql';
-import 'ace-builds/src-noconflict/theme-github';
-import DatabaseSchema from './components/schema';
+import 'ace-builds/src-noconflict/theme-textmate';
+import DatabaseSchema from './components/schema'; 
 import SQLPractice from './SQLPractice';
 import SubmissionHistory from './utils/submissionHistory';
 import { handleSolutionSubmit, SqlError } from './utils/sqlSolutionHandler';
@@ -304,7 +305,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-100 p-4 pb-16">
       <div className="container mx-auto max-w-7xl">
-        <h1 className="text-3xl font-bold mb-6 text-gray-800">SQL Tutor AI</h1>
+        <h1 className="text-3xl font-bold mb-6 text-gray-800">SQL Challenge AI</h1>
   
         <div className="mb-4 flex border-b border-gray-200">
           {['chat', 'query', 'practice', 'submissions'].map((tab) => (
@@ -356,148 +357,148 @@ export default function Home() {
           </div>
         )}
   
-  {activeTab === 'query' && (
-  <div className="space-y-4">
-    <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-      <div className="md:w-1/4">
-        <div className="bg-white rounded-lg shadow-md shadow-white">
-          <DatabaseSchema schemaData={schemaData} />
-        </div>
-      </div>
+        {activeTab === 'query' && (
+          <div className="space-y-4">
+            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
+              <div className="md:w-1/4">
+                <div className="bg-white rounded-lg shadow-md shadow-white">
+                  <DatabaseSchema schemaData={schemaData} />
+                </div>
+              </div>
 
-      <div className="md:w-3/4">
-        <div className="bg-white rounded-lg shadow-md p-4">
-          <h2 className="text-xl font-semibold mb-2 text-gray-700">SQL Query</h2>
-          <form onSubmit={handleSqlSubmit} className="space-y-2">
-            <AceEditor
-              mode="sql"
-              theme="github"
-              name="sql_editor"
-              onChange={(newValue) => setSqlQuery(newValue)}
-              fontSize={16}
-              showPrintMargin={false}
-              showGutter={true}
-              highlightActiveLine={true}
-              value={sqlQuery}
-              setOptions={{
-                enableBasicAutocompletion: true,
-                enableLiveAutocompletion: true,
-                enableSnippets: true,
-                showLineNumbers: true,
-                tabSize: 2,
-              }}
-              style={{
-                width: '100%',
-                height: editorHeight,
-                minHeight: '312px',
-                maxHeight: '350px'
-              }}
-              editorProps={{ $blockScrolling: true }}
-            />
-            <div className="flex space-x-2">
-              <button
-                type="submit"
-                className="flex-1 p-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors focus:outline-none focus:ring-2 focus:ring-green-300 flex items-center justify-center"
-                disabled={isLoading}
-              >
-                {isLoading ? <span className="animate-spin mr-2">↻</span> : <Play size={20} className="mr-2" />}
-                {isLoading ? 'Executing...' : 'Execute SQL'}
-              </button>
-              <button
-                type="button"
-                onClick={onSolutionSubmit}
-                className="flex-1 p-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-300 flex items-center justify-center"
-                disabled={isLoading || !currentQuestion}
-              >
-                <Send size={20} className="mr-2" />
-                Submit Solution
-              </button>
+              <div className="md:w-3/4">
+                <div className="bg-white rounded-lg shadow-md p-4">
+                  <h2 className="text-xl font-semibold mb-2 text-gray-700">SQL Query</h2>
+                  <form onSubmit={handleSqlSubmit} className="space-y-2">
+                    <AceEditor
+                      mode="sql"
+                      theme="textmate"
+                      name="sql_editor"
+                      onChange={(newValue) => setSqlQuery(newValue)}
+                      fontSize={16}
+                      showPrintMargin={false}
+                      showGutter={true}
+                      highlightActiveLine={true}
+                      value={sqlQuery}
+                      setOptions={{
+                        enableBasicAutocompletion: true,
+                        enableLiveAutocompletion: true,
+                        enableSnippets: true,
+                        showLineNumbers: true,
+                        tabSize: 2,
+                      }}
+                      style={{
+                        width: '100%',
+                        height: editorHeight,
+                        minHeight: '312px',
+                        maxHeight: '350px'
+                      }}
+                      editorProps={{ $blockScrolling: true }}
+                    />
+                    <div className="flex space-x-2">
+                      <button
+                        type="submit"
+                        className="flex-1 p-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors focus:outline-none focus:ring-2 focus:ring-green-300 flex items-center justify-center"
+                        disabled={isLoading}
+                      >
+                        {isLoading ? <span className="animate-spin mr-2">↻</span> : <Play size={20} className="mr-2" />}
+                        {isLoading ? 'Executing...' : 'Execute SQL'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onSolutionSubmit}
+                        className="flex-1 p-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-300 flex items-center justify-center"
+                        disabled={isLoading || !currentQuestion}
+                      >
+                        <Send size={20} className="mr-2" />
+                        Submit Solution
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
             </div>
-          </form>
-        </div>
-      </div>
-    </div>
 
-    {submissionFeedback && (
-      <div className="bg-white rounded-lg shadow-md p-4">
-        <h2 className="text-xl font-semibold mb-2 text-gray-700">Submission Feedback</h2>
-        <div className="whitespace-pre-wrap bg-gray-100 p-3 rounded">
-          {submissionFeedback}
-        </div>
-      </div>
-    )}
+            {submissionFeedback && (
+              <div className="bg-white rounded-lg shadow-md p-4">
+                <h2 className="text-xl font-semibold mb-2 text-gray-700">Submission Feedback</h2>
+                <div className="whitespace-pre-wrap bg-gray-100 p-3 rounded">
+                  {submissionFeedback}
+                </div>
+              </div>
+            )}
 
-    <div className="bg-white rounded-lg shadow-md p-4">
-      <h2 className="text-xl font-semibold mb-2 text-gray-700">Query Results</h2>
-      {sqlError ? (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-          <strong className="font-bold">Error: </strong>
-          <span className="block sm:inline">{sqlError.message}</span>
-          <AlertCircle className="inline-block ml-2" size={20} />
-          <div className="mt-2">
-            <strong>Query:</strong>
-            <pre className="mt-1 bg-red-50 p-2 rounded">{sqlError.query}</pre>
+            <div className="bg-white rounded-lg shadow-md p-4">
+              <h2 className="text-xl font-semibold mb-2 text-gray-700">Query Results</h2>
+              {sqlError ? (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                  <strong className="font-bold">Error: </strong>
+                  <span className="block sm:inline">{sqlError.message}</span>
+                  <AlertCircle className="inline-block ml-2" size={20} />
+                  <div className="mt-2">
+                    <strong>Query:</strong>
+                    <pre className="mt-1 bg-red-50 p-2 rounded">{sqlError.query}</pre>
+                  </div>
+                  <div className="mt-2">
+                    <strong>Details:</strong>
+                    <pre className="mt-1 bg-red-50 p-2 rounded whitespace-pre-wrap">{sqlError.details}</pre>
+                  </div>
+                </div>
+              ) : queryResults.length > 0 ? (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full">
+                      <thead>
+                        <tr className="bg-gray-100">
+                          {Object.keys(queryResults[0]).map((key) => (
+                            <th key={key} className="py-2 px-4 text-left text-gray-600">{key}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedResults.map((row, rowIndex) => (
+                          <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                            {Object.values(row).map((value, valueIndex) => (
+                              <td key={valueIndex} className="py-2 px-4 border-t text-gray-800 text-ellipsis">
+                                <div className="group relative">
+                                  <span className="truncate">
+                                    {typeof value === 'object' ? JSON.stringify(value) : truncateText(String(value), 50)}
+                                  </span>
+                                  <span className="invisible group-hover:visible absolute z-10 bg-gray-800 text-white p-2 rounded text-sm -mt-1 ml-1">
+                                    {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                                  </span>
+                                </div>
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex justify-between items-center mt-4">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-l"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+                    <span className="text-gray-700">Page {currentPage} of {totalPages}</span>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-r"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-gray-600">No results to display. Execute a query to see results here.</p>
+              )}
+            </div>
           </div>
-          <div className="mt-2">
-            <strong>Details:</strong>
-            <pre className="mt-1 bg-red-50 p-2 rounded whitespace-pre-wrap">{sqlError.details}</pre>
-          </div>
-        </div>
-      ) : queryResults.length > 0 ? (
-        <>
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead>
-                <tr className="bg-gray-100">
-                  {Object.keys(queryResults[0]).map((key) => (
-                    <th key={key} className="py-2 px-4 text-left text-gray-600">{key}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedResults.map((row, rowIndex) => (
-                  <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                    {Object.values(row).map((value, valueIndex) => (
-                      <td key={valueIndex} className="py-2 px-4 border-t text-gray-800 text-ellipsis">
-                        <div className="group relative">
-                          <span className="truncate">
-                            {typeof value === 'object' ? JSON.stringify(value) : truncateText(String(value), 50)}
-                          </span>
-                          <span className="invisible group-hover:visible absolute z-10 bg-gray-800 text-white p-2 rounded text-sm -mt-1 ml-1">
-                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                          </span>
-                        </div>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex justify-between items-center mt-4">
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1}
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-l"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <span className="text-gray-700">Page {currentPage} of {totalPages}</span>
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              disabled={currentPage === totalPages}
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-r"
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
-        </>
-      ) : (
-        <p className="text-gray-600">No results to display. Execute a query to see results here.</p>
-      )}
-    </div>
-  </div>
-)}
+        )}
         
         {activeTab === 'practice' && (
           <div className="bg-white rounded-lg shadow-md p-6 mb-4">
@@ -507,11 +508,20 @@ export default function Home() {
               <div className="bg-blue-50 p-4 rounded-lg shadow-sm">
                 <h3 className="text-xl font-semibold mb-4 text-blue-800">Current Question</h3>
                 {currentQuestion ? (
-                  <pre className="whitespace-pre-wrap font-sans text-blue-700">
+                  <ReactMarkdown
+                     className="prose max-w-none"
+                     components={{
+                       h1: ({node, ...props}) => <h1 className="text-2xl font-bold mb-4" {...props} />,
+                       h2: ({node, ...props}) => <h2 className="text-xl font-semibold mb-2" {...props} />,
+                       strong: ({node, ...props}) => <span className="font-bold" {...props} />,
+                       em: ({node, ...props}) => <span className="underline" {...props} />,
+                       code: ({node, ...props}) => <code className="bg-gray-100 rounded px-1" {...props} />,
+                     }}
+                   >
                     {currentQuestion.content}
-                  </pre>
+                  </ReactMarkdown>
                 ) : (
-                  <p className="text-gray-500 italic">No question selected. Start a new SQL Challenge to begin.</p>
+                  <p className="text-blue-500 italic">No question selected. Start a new SQL Challenge to begin.</p>
                 )}
               </div>
   
@@ -569,7 +579,6 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-  
               {/* Query Results */}
               <div className="bg-white rounded-lg shadow-sm p-4">
                 <h3 className="text-xl font-semibold mb-4 text-gray-700">Query Results</h3>

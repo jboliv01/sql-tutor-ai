@@ -93,6 +93,7 @@ class LLMSQLWrapper:
     def get_schema(self):
         schema = []
         tables = self.conn.execute("SHOW TABLES").fetchall()
+        app.logger.info(f'SHOW TABLES: {tables}')
         for table in tables:
             table_name = table[0]
             columns = self.conn.execute(f"DESCRIBE {table_name}").fetchall()
@@ -207,56 +208,58 @@ class LLMSQLWrapper:
     def generate_practice_question(self, category):
         schema_str = str(self.schema)
         system_prompt = f"""You are an AI assistant that generates SQL practice questions.
-        Database schema: {schema_str}
-        
-        Generate a unique SQL practice question for the category: {category}
-        The question should be challenging but solvable using the provided schema. 
-        Try to use a variety of tables in your questions.
-        Include the question, the tables involved, and a hint.
-        
-        The format should be:
-        
-        Category: {category}
+            Database schema: {schema_str}
 
-        Question: [Your question here]
-        
-        Tables: [List the relevant tables here]
+            Generate a unique SQL practice question for the category: {category}
+            The question should be challenging but solvable using the provided schema.
+            Try to use a variety of tables in your questions.
 
-        Hint: [Provide a hint here]
-        """
+            Your response must strictly follow this format:
 
+            Question: [Your question here]
+
+            Category: {category}
+
+            Tables: [Comma-separated list of relevant tables]
+
+            Hint: [Provide a hint here]
+
+            Ensure that:
+            1. The "Question" section contains the full question text with SQL keywords in ALL CAPS.
+            2. The "Tables" section lists only the table names, separated by commas.
+            3. The "Hint" section provides a brief, helpful hint for solving the question.
+            4. Do not include any additional text or explanations outside of these sections.
+            """
         prompt = ChatPromptTemplate.from_messages([
             SystemMessage(content=system_prompt),
             HumanMessagePromptTemplate.from_template("Generate a SQL practice question for the {category} category.")
         ])
-
         conversation = LLMChain(
             llm=self.groq_chat,
             prompt=prompt,
             verbose=True,
         )
-
         try:
             generated_response = conversation.predict(category=category)
             
-            # Parse the generated response
-            question_match = re.search(r'Question: (.+?)(?=\n\nTables:|$)', generated_response, re.DOTALL)
-            tables_match = re.search(r'Tables: (.+?)(?=\n\nHint:|$)', generated_response, re.DOTALL)
-            hint_match = re.search(r'Hint: (.+?)$', generated_response, re.DOTALL)
+            # Parse the generated response using more specific regex patterns
+            category_match = re.search(r'Category:\s*(.+?)\s*\n', generated_response)
+            question_match = re.search(r'Question:\s*(.+?)\s*\n', generated_response, re.DOTALL)
+            tables_match = re.search(r'Tables:\s*(.+?)\s*\n', generated_response)
+            hint_match = re.search(r'Hint:\s*(.+?)\s*$', generated_response, re.DOTALL)
             
+            category = category_match.group(1).strip() if category_match else category
             question = question_match.group(1).strip() if question_match else ""
             tables = tables_match.group(1).strip() if tables_match else ""
             hint = hint_match.group(1).strip() if hint_match else ""
             
             # Store the parsed question in the question_history table
             result = self.execute_with_retry("""
-                INSERT INTO question_history (category, question, tables, hint)
-                VALUES (?, ?, ?, ?)
-                RETURNING id
+            INSERT INTO question_history (category, question, tables, hint)
+            VALUES (?, ?, ?, ?)
+            RETURNING id
             """, (category, question, tables, hint))
-            
             question_id = result[0][0]
-            
             app.logger.info(f"Generated question with ID: {question_id}")
             
             return {
@@ -269,7 +272,7 @@ class LLMSQLWrapper:
         except Exception as e:
             app.logger.error(f"Error generating practice question: {str(e)}")
             app.logger.error(f"Full exception: {traceback.format_exc()}")
-            raise
+            return None
 
     def get_practice_question(self, question_id):
         result = self.execute_with_retry("""

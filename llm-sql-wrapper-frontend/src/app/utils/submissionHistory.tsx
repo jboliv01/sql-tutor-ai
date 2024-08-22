@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Check, X, Loader, RefreshCw } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Rectangle } from 'recharts';
 
 interface SubmissionHistoryItem {
   id: number;
@@ -45,6 +46,51 @@ const SubmissionHistory: React.FC<SubmissionHistoryProps> = ({
     });
   };
 
+  const categoryPerformance = useMemo(() => {
+    const categoryData: { [key: string]: { totalScore: number; count: number } } = {};
+    submissionHistory.forEach(item => {
+      if (!categoryData[item.category]) {
+        categoryData[item.category] = { totalScore: 0, count: 0 };
+      }
+      categoryData[item.category].totalScore += (item.correctness_score + item.efficiency_score + item.style_score) / 3;
+      categoryData[item.category].count += 1;
+    });
+
+    return Object.entries(categoryData).map(([category, data]) => ({
+      category,
+      averageScore: Number((data.totalScore / data.count).toFixed(2))
+    }));
+  }, [submissionHistory]);
+
+  const CustomBar = (props: any) => {
+    const { x, y, width, height, name } = props;
+    const fill = name === 'Pass Rate' ? '#82ca9d' : '#ff6b6b';
+    return <Rectangle x={x} y={y} width={width} height={height} fill={fill} />;
+  };
+
+  const overallPerformance = useMemo(() => {
+    const totalSubmissions = submissionHistory.length;
+    const passedSubmissions = submissionHistory.filter(item => item.pass_fail).length;
+    const passRate = Number(((passedSubmissions / totalSubmissions) * 100).toFixed(2));
+
+    return [
+      { name: 'Pass Rate', value: passRate },
+      { name: 'Fail Rate', value: Number((100 - passRate).toFixed(2)) }
+    ];
+  }, [submissionHistory]);
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white p-2 border border-gray-300 rounded shadow">
+          <p className="font-semibold">{`${label}`}</p>
+          <p>{`${payload[0].name}: ${payload[0].value.toFixed(2)}%`}</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-md p-4 mb-20">
       <div className="flex justify-between items-center mb-4">
@@ -81,41 +127,78 @@ const SubmissionHistory: React.FC<SubmissionHistoryProps> = ({
       )}
       
       {!isLoading && !error && submissionHistory.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="min-w-full" role="table">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="py-2 px-4 text-left text-gray-600">Question</th>
-                <th className="py-2 px-4 text-left text-gray-600">Category</th>
-                <th className="py-2 px-4 text-left text-gray-600">Correctness</th>
-                <th className="py-2 px-4 text-left text-gray-600">Efficiency</th>
-                <th className="py-2 px-4 text-left text-gray-600">Style</th>
-                <th className="py-2 px-4 text-left text-gray-600">Status</th>
-                <th className="py-2 px-4 text-left text-gray-600">Timestamp</th>
-              </tr>
-            </thead>
-            <tbody>
-              {submissionHistory.map((item, index) => (
-                <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                  <td className="py-2 px-4 border-t text-gray-800">{truncateText(item.question, 50)}</td>
-                  <td className="py-2 px-4 border-t text-gray-800">{item.category}</td>
-                  <td className="py-2 px-4 border-t text-gray-800">{item.correctness_score}/10</td>
-                  <td className="py-2 px-4 border-t text-gray-800">{item.efficiency_score}/10</td>
-                  <td className="py-2 px-4 border-t text-gray-800">{item.style_score}/10</td>
-                  <td className="py-2 px-4 border-t">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      item.pass_fail === true ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}>
-                      {item.pass_fail === true ? <Check size={16} className="mr-1" /> : <X size={16} className="mr-1" />}
-                      {item.pass_fail === true ? 'Pass' : 'Fail'}
-                    </span>
-                  </td>
-                  <td className="py-2 px-4 border-t text-gray-800">{formatTimestamp(item.timestamp)}</td>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-2">Performance by Category</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={categoryPerformance}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="category" />
+                  <YAxis />
+                  <Tooltip 
+                    formatter={(value: number) => value.toFixed(2)}
+                    contentStyle={{ backgroundColor: 'white', border: '1px solid #ccc' }}
+                  />
+                  <Legend />
+                  <Bar dataKey="averageScore" fill="#8884d8" name="Average Score" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-2">Overall Performance</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={overallPerformance}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Bar
+                    dataKey="value"
+                    name="Percentage"
+                    shape={<CustomBar />}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full" role="table">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="py-2 px-4 text-left text-gray-600">Question</th>
+                  <th className="py-2 px-4 text-left text-gray-600">Category</th>
+                  <th className="py-2 px-4 text-left text-gray-600">Correctness</th>
+                  <th className="py-2 px-4 text-left text-gray-600">Efficiency</th>
+                  <th className="py-2 px-4 text-left text-gray-600">Style</th>
+                  <th className="py-2 px-4 text-left text-gray-600">Status</th>
+                  <th className="py-2 px-4 text-left text-gray-600">Timestamp</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {submissionHistory.map((item, index) => (
+                  <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                    <td className="py-2 px-4 border-t text-gray-800">{truncateText(item.question, 50)}</td>
+                    <td className="py-2 px-4 border-t text-gray-800">{item.category}</td>
+                    <td className="py-2 px-4 border-t text-gray-800">{item.correctness_score}/10</td>
+                    <td className="py-2 px-4 border-t text-gray-800">{item.efficiency_score}/10</td>
+                    <td className="py-2 px-4 border-t text-gray-800">{item.style_score}/10</td>
+                    <td className="py-2 px-4 border-t">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        item.pass_fail === true ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      }`}>
+                        {item.pass_fail === true ? <Check size={16} className="mr-1" /> : <X size={16} className="mr-1" />}
+                        {item.pass_fail === true ? 'Pass' : 'Fail'}
+                      </span>
+                    </td>
+                    <td className="py-2 px-4 border-t text-gray-800">{formatTimestamp(item.timestamp)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

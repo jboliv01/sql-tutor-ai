@@ -12,12 +12,10 @@ Every time a question is asked, the database schema context should be fetched/up
 
 When a user presses "Practice SQL Questions" the chatbot should prompt the user to select a specific category. Once a category is selected, the chatbot should then prompt the user with one SQL question using the available tables and a hint. The chatbot should not provide an answer unless explicity requested by a user. The question should be in the following format:
 
-
 Question:
 
 Table(s):
 
 Hint:
-
 
 ```
