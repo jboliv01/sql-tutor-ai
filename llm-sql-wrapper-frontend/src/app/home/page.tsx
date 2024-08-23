@@ -52,7 +52,7 @@ interface SubmissionHistoryItem {
 }
 
 export function Home() {
-  const [sqlQuery, setSqlQuery] = useState('SELECT * FROM user_4.user_4_data LIMIT 5');
+  const [sqlQuery, setSqlQuery] = useState('SELECT * FROM public.users LIMIT 5');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [queryHistory, setQueryHistory] = useState<QueryHistoryItem[]>([]);
   const [queryResults, setQueryResults] = useState<QueryResult[]>([]);
@@ -152,7 +152,7 @@ export function Home() {
     }]);
   
     if (username) {
-      const defaultQuery = `SELECT * FROM user_${username}.user_${username}_data LIMIT 5`;
+      const defaultQuery = `SELECT * FROM user_${username}.sample_users LIMIT 5;`;
       console.log('Setting default query:', defaultQuery);
       setSqlQuery(defaultQuery);
     } else {

@@ -77,7 +77,7 @@ class LLMSQLWrapper:
         self.model = 'llama-3.1-70b-versatile'
         self.groq_chat = ChatGroq(groq_api_key=self.groq_api_key, model_name=self.model)
         self.memory = ConversationBufferWindowMemory(k=5, memory_key="chat_history", return_messages=True)
-        self.schema = self.get_schema()
+        # self.schema = self.get_schema()
 
         # Apply retry logic to the sequence and table creation
         self.create_sequences_and_tables()
@@ -203,37 +203,60 @@ class LLMSQLWrapper:
             app.logger.error(f"Error creating sequences and tables: {str(e)}")
             raise
 
-    def get_schema(self):
+    def get_schema(self, username):
         schema = []
-        with self.get_superuser_connection() as conn:
+        with self.get_user_connection(username) as conn:
             with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT table_name 
-                    FROM information_schema.tables 
-                    WHERE table_schema = 'public'
+                # Get the user's schema and public schema
+                cur.execute(f"""
+                    SELECT schema_name 
+                    FROM information_schema.schemata 
+                    WHERE schema_name = 'public' OR schema_name = 'user_{username}'
                 """)
-                tables = cur.fetchall()
-                for table in tables:
-                    table_name = table[0]
-                    cur.execute(f"""
-                        SELECT column_name, data_type 
-                        FROM information_schema.columns 
-                        WHERE table_name = %s
-                    """, (table_name,))
-                    columns = cur.fetchall()
-                    table_item = {
-                        "id": f"table-{table_name}",
-                        "label": table_name,
-                        "children": [
-                            {
-                                "id": f"column-{table_name}-{column[0]}",
-                                "label": f"{column[0]} ({column[1]})"
-                            } for column in columns
-                        ]
-                    }
-                    schema.append(table_item)
-        return schema
+                schemas = cur.fetchall()
 
+                for schema_name in schemas:
+                    schema_name = schema_name[0]
+                    
+                    # Get tables for each schema
+                    cur.execute("""
+                        SELECT table_name 
+                        FROM information_schema.tables 
+                        WHERE table_schema = %s
+                    """, (schema_name,))
+                    tables = cur.fetchall()
+                    
+                    schema_item = {
+                        "id": f"schema-{schema_name}",
+                        "label": schema_name,
+                        "children": []
+                    }
+                    
+                    for table in tables:
+                        table_name = table[0]
+                        cur.execute("""
+                            SELECT column_name, data_type 
+                            FROM information_schema.columns 
+                            WHERE table_schema = %s AND table_name = %s
+                        """, (schema_name, table_name))
+                        columns = cur.fetchall()
+                        
+                        table_item = {
+                            "id": f"table-{schema_name}-{table_name}",
+                            "label": table_name,
+                            "children": [
+                                {
+                                    "id": f"column-{schema_name}-{table_name}-{column[0]}",
+                                    "label": f"{column[0]} ({column[1]})"
+                                } for column in columns
+                            ]
+                        }
+                        schema_item["children"].append(table_item)
+                    
+                    schema.append(schema_item)
+
+        return schema
+    
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=1, min=1, max=10),
@@ -252,7 +275,7 @@ class LLMSQLWrapper:
         try:
             with self.get_user_connection(username) as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute(f"SET search_path TO user_{user_id}, public")
+                    cur.execute(f"SET search_path TO user_{username}, public")
                     cur.execute(query)
                     result = cur.fetchall()
             self.add_to_query_history(query, result, user_id)
@@ -280,9 +303,9 @@ class LLMSQLWrapper:
             LIMIT {limit}
         """, (user_id,))
     
-    def ask_question(self, question, user_id, is_practice=False, category=None):
+    def ask_question(self, question, user_id, username, is_practice=False, category=None):
         if is_practice:
-            return self.generate_practice_question(category, user_id)
+            return self.generate_practice_question(category, user_id, username)
         
         app.logger.info(f"Received question: {question}")
 
@@ -327,8 +350,8 @@ class LLMSQLWrapper:
             app.logger.error(f"Full exception: {traceback.format_exc()}")
             return f"I apologize, but I encountered an error while processing your question. Error details: {str(e)}"
 
-    def generate_practice_question(self, category, user_id):
-        schema_str = str(self.schema)
+    def generate_practice_question(self, category, user_id, username):
+        schema_str = str(self.get_schema(username))
         system_prompt = f"""You are an AI assistant that generates SQL practice questions.
             Database schema: {schema_str}
 
@@ -532,8 +555,8 @@ class LLMSQLWrapper:
             raise
 
     def create_user_table(self, user_id, username):
-        schema_name = f"user_{user_id}"
-        table_name = f"user_{user_id}_data"
+        schema_name = f"user_{username}"
+        table_name = f"sample_users"
         
         create_table_query = f"""
         CREATE TABLE IF NOT EXISTS {schema_name}.{table_name} (
@@ -548,7 +571,7 @@ class LLMSQLWrapper:
         enable_rls_query = f"ALTER TABLE {schema_name}.{table_name} ENABLE ROW LEVEL SECURITY;"
         
         create_rls_policy_query = f"""
-        CREATE POLICY user_{user_id}_own_data_policy ON {schema_name}.{table_name}
+        CREATE POLICY user_{username}_own_data_policy ON {schema_name}.{table_name}
         FOR ALL
         USING (current_user = '{username}');
         """
@@ -584,12 +607,15 @@ class LLMSQLWrapper:
                     else:
                         app.logger.info(f"Table {schema_name}.{table_name} already contains data. Skipping insertion.")
                 conn.commit()
-            app.logger.info(f"Successfully created and populated table {table_name} for user {user_id}")
+            app.logger.info(f"Successfully created and populated table {table_name} for user {username}")
         except Exception as e:
             app.logger.error(f"Error creating user table: {str(e)}")
             raise
 
     def create_user(self, username, password, email):
+        if not re.match(r'^[a-z][a-z0-9_]{2,62}$', username):
+            raise ValueError("Username must start with a letter, contain only lowercase letters, numbers, and underscores, and be 3-63 characters long.")
+
         password_hash = generate_password_hash(password)
         try:
             with self.get_superuser_connection() as conn:
@@ -600,7 +626,7 @@ class LLMSQLWrapper:
                         cur.execute(f"CREATE ROLE {username} LOGIN PASSWORD %s", (password,))
                         app.logger.info(f"Created PostgreSQL role: {username}")
                     
-                    # Insert the user record in the `users` table
+                    # Insert the user record
                     cur.execute("""
                         INSERT INTO users (username, password_hash, email)
                         VALUES (%s, %s, %s)
@@ -608,22 +634,20 @@ class LLMSQLWrapper:
                     """, (username, password_hash, email))
                     user_id = cur.fetchone()[0]
                     
-                    # Create the schema for the user and set the owner
-                    schema_name = f"user_{user_id}"
-                    cur.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name} AUTHORIZATION {username}")
-                    cur.execute(f"ALTER SCHEMA {schema_name} OWNER TO {username}")
-                    
-                    # Grant necessary permissions
-                    cur.execute(f"GRANT ALL ON SCHEMA {schema_name} TO {username}")
-                    cur.execute(f"ALTER DEFAULT PRIVILEGES IN SCHEMA {schema_name} GRANT ALL ON TABLES TO {username}")
+                    # Create user schema for the user and set the owner
+                    cur.execute(f"CREATE SCHEMA IF NOT EXISTS user_{username} AUTHORIZATION {username}")
+         
+                    # Grant necessary privileges
+                    cur.execute(f"GRANT ALL ON SCHEMA user_{username} TO {username}")
+                    cur.execute(f"ALTER DEFAULT PRIVILEGES IN SCHEMA user_{username} GRANT ALL ON TABLES TO {username}")
                     
                     conn.commit()
-                self.user_passwords[username] = password  # Store the password for connection purposes
+                self.user_passwords[username] = password
                 return user_id
         except psycopg2.IntegrityError:
             conn.rollback()
             raise ValueError("Username or email already exists")
-
+    
     def get_user(self, user_id):
         result = self.execute_with_retry("""
             SELECT id, username, password_hash
@@ -778,7 +802,7 @@ def ask():
         return jsonify({"error": "Question is not provided"}), 400
 
     try:
-        response = wrapper.ask_question(question, current_user.id, is_practice, category)
+        response = wrapper.ask_question(question, current_user.id, current_user.username, is_practice, category)
         query_history = wrapper.get_query_history(current_user.id) if not is_practice else []
         app.logger.info("Successfully processed question")
         return jsonify({
@@ -796,7 +820,7 @@ def fetch_schema():
     app.logger.info("Received GET request to /schema")
 
     try:
-        schema = wrapper.schema
+        schema = wrapper.get_schema(current_user.username)
         app.logger.info("Successfully fetched schema")
         return jsonify(schema), 200
     except Exception as e:
