@@ -318,7 +318,7 @@ class LLMSQLWrapper:
             history_str += f"Results summary: {len(results_dict)} total results. Top 10 results:\n"
             history_str += json.dumps(top_results, indent=2) + "\n\n"
 
-        schema_str = str(self.schema)
+        schema_str = str(self.get_schema(username))
         system_prompt = f"""You are an AI assistant that provides information about SQL queries and their results based on the query history.
         Database schema: {schema_str}
         
@@ -425,8 +425,8 @@ class LLMSQLWrapper:
             WHERE id = %s AND user_id = %s
         """, (question_id, user_id))
             
-    def validate_solution(self, sql_query, results, question_id, user_id):
-        schema_str = str(self.schema)
+    def validate_solution(self, sql_query, results, question_id, user_id, username):
+        schema_str = str(self.get_schema(username))
         
         # Fetch the current question from the database
         question_result = self.execute_with_retry("""
@@ -847,7 +847,7 @@ def submit_solution():
         return jsonify({"error": "Missing required data"}), 400
 
     try:
-        feedback = wrapper.validate_solution(sql_query, results, question_id, current_user.id)
+        feedback = wrapper.validate_solution(sql_query, results, question_id, current_user.id, current_user.username)
         
         # Add the submission to query_history
         wrapper.add_to_query_history(sql_query, results, current_user.id)

@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation'; // Import from next/navigation
+import { useRouter } from 'next/navigation'; 
 
 const Registration: React.FC = () => {
   const [username, setUsername] = useState('');
