@@ -13,9 +13,16 @@ import SubmissionHistory from '../utils/submissionHistory';
 import { handleSolutionSubmit, SqlError } from '../utils/sqlSolutionHandler';
 import LogoutButton from '../components/Logout';
 import "../globals.css";
+
 type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
+};
+
+type SqlError = {
+  message: string;
+  query: string;
+  details: string;
 };
 
 type QueryHistoryItem = {
@@ -44,8 +51,8 @@ interface SubmissionHistoryItem {
   timestamp: string;
 }
 
-export default function Home() {
-  const [sqlQuery, setSqlQuery] = useState('');
+export function Home() {
+  const [sqlQuery, setSqlQuery] = useState('SELECT * FROM user_4.user_4_data LIMIT 5');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [queryHistory, setQueryHistory] = useState<QueryHistoryItem[]>([]);
   const [queryResults, setQueryResults] = useState<QueryResult[]>([]);
@@ -99,19 +106,19 @@ export default function Home() {
     }
   };
 
-    const fetchSchema = useCallback(async () => {
-      try {
-        const res = await fetch('/api/schema');
-        if (!res.ok) {
-          throw new Error('Failed to fetch schema');
-        }
-        const data = await res.json();
-        setSchemaData(data);
-      } catch (err) {
-        console.error('Error fetching schema:', err);
+  const fetchSchema = useCallback(async () => {
+    try {
+      const res = await fetch('/api/schema');
+      if (!res.ok) {
+        throw new Error('Failed to fetch schema');
       }
-    }, []);
-  
+      const data = await res.json();
+      setSchemaData(data);
+    } catch (err) {
+      console.error('Error fetching schema:', err);
+    }
+  }, []);
+
   const fetchSubmissionHistory = useCallback(async () => {
     setIsLoadingSubmissions(true);
     setSubmissionError(null);
@@ -144,8 +151,8 @@ export default function Home() {
       content: `Hello ${username}! I'm your SQL Tutor AI. How can I help you today?` 
     }]);
   
-    if (userId) {
-      const defaultQuery = `SELECT * FROM user_${userId}.user_${userId}_data LIMIT 5`;
+    if (username) {
+      const defaultQuery = `SELECT * FROM user_${username}.user_${username}_data LIMIT 5`;
       console.log('Setting default query:', defaultQuery);
       setSqlQuery(defaultQuery);
     } else {
@@ -165,13 +172,11 @@ export default function Home() {
   
     return () => window.removeEventListener('resize', updateHeight);
   }, [fetchSchema, fetchSubmissionHistory]);
-  
 
   useEffect(() => {
     console.log('sqlQuery updated:', sqlQuery);
   }, [sqlQuery]);
 
-  
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -192,36 +197,71 @@ export default function Home() {
     setQueryResults([]);
 
     try {
-      const res = await fetch('/api/execute-sql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: sqlQuery })
-      });
+        const res = await fetch('/api/execute-sql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sql: sqlQuery }),
+            credentials: 'include'
+        });
 
-      const data = await res.json();
+        const rawResponseText = await res.text();
+        let data;
 
-      if (!res.ok) {
-        throw new Error(JSON.stringify({
-          message: data.error || 'Failed to execute SQL query',
-          query: sqlQuery,
-          details: data.details || 'No additional details provided'
-        }));
-      }
+        try {
+            data = JSON.parse(rawResponseText);
+        } catch (jsonError) {
+            throw new Error('Invalid JSON response from server.');
+        }
 
-      setQueryResults(data.result);
-      setCurrentPage(1);
-      setChatHistory(prev => [...prev,
-      { role: 'user', content: `Executed SQL: ${sqlQuery}` },
-      { role: 'assistant', content: `Query executed successfully. ${data.result.length} rows returned.` }
-      ]);
+        if (!res.ok) {
+            throw new Error(JSON.stringify({
+                message: data.message || 'Failed to execute SQL query',
+                query: data.query || sqlQuery,
+                error: data.error || 'Execution Error'
+            }));
+        }
+
+        setQueryResults(data.result);
+        setCurrentPage(1);
+        setChatHistory(prev => [...prev,
+            { role: 'user', content: `Executed SQL: ${sqlQuery}` },
+            { role: 'assistant', content: `Query executed successfully. ${data.result.length} rows returned.` }
+        ]);
     } catch (err) {
-      console.error('Error:', err);
-      setSqlError(err as SqlError);
-      setChatHistory(prev => [...prev, { role: 'assistant', content: 'An error occurred while executing the SQL query.' }]);
+        console.error('Error:', err);
+
+        let errorData: { message: string, query: string, error: string };
+
+        if (err instanceof Error) {
+            try {
+                errorData = JSON.parse(err.message);
+            } catch (parseError) {
+                errorData = {
+                    message: err.message || 'Unknown Error',
+                    query: sqlQuery,
+                    error: 'An unexpected error occurred.'
+                };
+            }
+        } else {
+            errorData = {
+                message: 'Unknown Error',
+                query: sqlQuery,
+                error: 'An unexpected error occurred.'
+            };
+        }
+
+        setSqlError({
+            message: errorData.message,
+            query: errorData.query,
+            details: errorData.error
+        });
+        setChatHistory(prev => [...prev, { role: 'assistant', content: `An error occurred while executing the SQL query: ${errorData.message}` }]);
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
-  };
+};
+
+  
 
   const handleAskQuestion = async (question: string) => {
     setIsLoading(true);
@@ -414,7 +454,7 @@ export default function Home() {
         {activeTab === 'query' && (
           <div className="space-y-4">
             <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-              <div className="md:w-1/4">
+            <div className="md:w-1/4">
                 <div className="bg-white rounded-lg shadow-md shadow-white">
                   <DatabaseSchema schemaData={schemaData} />
                 </div>
@@ -486,16 +526,12 @@ export default function Home() {
               <h2 className="text-xl font-semibold mb-2 text-gray-700">Query Results</h2>
               {sqlError ? (
                 <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                  <strong className="font-bold">Error: </strong>
-                  <span className="block sm:inline">{sqlError.message}</span>
+                  <strong className="font-bold">Error: {sqlError.details}</strong>
+                  <span className="block sm:inline"> {sqlError.message}</span>
                   <AlertCircle className="inline-block ml-2" size={20} />
                   <div className="mt-2">
                     <strong>Query:</strong>
                     <pre className="mt-1 bg-red-50 p-2 rounded">{sqlError.query}</pre>
-                  </div>
-                  <div className="mt-2">
-                    <strong>Details:</strong>
-                    <pre className="mt-1 bg-red-50 p-2 rounded whitespace-pre-wrap">{sqlError.details}</pre>
                   </div>
                 </div>
               ) : queryResults.length > 0 ? (
@@ -750,3 +786,5 @@ export default function Home() {
   </main>
 );
 }
+
+export default Home;

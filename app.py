@@ -4,8 +4,9 @@ import re
 from datetime import datetime, date
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
-from flask_session import Session 
+from flask_session import Session
 import psycopg2
+from psycopg2 import errors
 from psycopg2.extras import RealDictCursor
 import traceback
 import logging
@@ -26,12 +27,17 @@ load_dotenv('.env.local')
 app = Flask(__name__)
 
 app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', os.urandom(24))
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True for production with HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 Session(app)
 
-CORS(app, resources={r"/*": {"origins": "http://localhost:3000", "supports_credentials": True}})
+CORS(app, resources={r"/*": {"origins": "http://127.0.0.1:3000", "supports_credentials": True}})
 
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your_secret_key_here')
+# Configure logging
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
@@ -55,11 +61,16 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return wrapper.get_user(user_id)
+    logger.debug(f"Loading user: {user_id}")
+    user = wrapper.get_user(user_id)
+    logger.debug(f"Loaded user: {user}")
+    return user
 
 class LLMSQLWrapper:
     def __init__(self, db_config):
-        self.db_config = db_config
+        self.superuser_config = db_config
+        self.user_connections = {}
+        self.user_passwords = {}  # Add this line to store user passwords
         self.groq_api_key = os.getenv('GROQ_API_KEY')
         if not self.groq_api_key:
             raise ValueError("GROQ_API_KEY not found in environment variables")
@@ -71,13 +82,30 @@ class LLMSQLWrapper:
         # Apply retry logic to the sequence and table creation
         self.create_sequences_and_tables()
 
-    def get_db_connection(self):
-        return psycopg2.connect(**self.db_config)
+    def get_superuser_connection(self):
+        return psycopg2.connect(**self.superuser_config)
+    
+    def get_user_connection(self, username):
+        if username not in self.user_connections:
+            user_config = self.superuser_config.copy()
+            user_config['user'] = username
+            user_config['password'] = self.user_passwords.get(username)
+            
+            if not user_config['password']:
+                raise psycopg2.OperationalError(f"No password found for user {username}. Please log in again.")
+
+            try:
+                self.user_connections[username] = psycopg2.connect(**user_config)
+            except psycopg2.OperationalError as e:
+                app.logger.error(f"Failed to connect for user {username}: {str(e)}")
+                raise
+        return self.user_connections[username]
+
 
     def create_sequences_and_tables(self):
         try:
             app.logger.info("Creating sequences and tables...")
-            with self.get_db_connection() as conn:
+            with self.get_superuser_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS users (
@@ -160,7 +188,6 @@ class LLMSQLWrapper:
                         END;
                         $$ LANGUAGE plpgsql;
 
-
                         -- Sample public dataset
                         CREATE TABLE IF NOT EXISTS public.sample_dataset (
                             id SERIAL PRIMARY KEY,
@@ -178,7 +205,7 @@ class LLMSQLWrapper:
 
     def get_schema(self):
         schema = []
-        with self.get_db_connection() as conn:
+        with self.get_superuser_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT table_name 
@@ -214,29 +241,27 @@ class LLMSQLWrapper:
         before_sleep=lambda retry_state: time.sleep(0.1)  # Small delay before retry
     )
     def execute_with_retry(self, query, params=None):
-        with self.get_db_connection() as conn:
+        with self.get_superuser_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(query, params)
                 if cur.description:
                     return cur.fetchall()
                 return None
 
-    def execute_query(self, query, user_id):
+    def execute_query(self, query, user_id, username):
         try:
-            with self.get_db_connection() as conn:
+            with self.get_user_connection(username) as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    # Set the current user for RLS
-                    cur.execute("SELECT set_current_user(%s)", (user_id,))
-                    # Set the search path
                     cur.execute(f"SET search_path TO user_{user_id}, public")
-                    # Execute the actual query
                     cur.execute(query)
                     result = cur.fetchall()
             self.add_to_query_history(query, result, user_id)
             return result
+        except errors.InsufficientPrivilege as e:
+            app.logger.error(f"Insufficient privilege: {str(e)}")
+            raise errors.InsufficientPrivilege(f"Permission denied: {str(e)}")
         except Exception as e:
             app.logger.error(f"Error executing query: {str(e)}")
-            app.logger.error(traceback.format_exc())
             raise
 
     def add_to_query_history(self, query, results, user_id):
@@ -338,7 +363,6 @@ class LLMSQLWrapper:
         )
         try:
             generated_response = conversation.predict(category=category)
-            
             # Parse the generated response using more specific regex patterns
             category_match = re.search(r'Category:\s*(.+?)\s*\n', generated_response)
             question_match = re.search(r'Question:\s*(.+?)\s*\n', generated_response, re.DOTALL)
@@ -507,11 +531,10 @@ class LLMSQLWrapper:
             app.logger.error(f"An error occurred while fetching submission history: {str(e)}")
             raise
 
-    def create_user_table(self, user_id):
+    def create_user_table(self, user_id, username):
         schema_name = f"user_{user_id}"
         table_name = f"user_{user_id}_data"
         
-        create_schema_query = f"CREATE SCHEMA IF NOT EXISTS {schema_name}"
         create_table_query = f"""
         CREATE TABLE IF NOT EXISTS {schema_name}.{table_name} (
             id SERIAL PRIMARY KEY,
@@ -522,6 +545,14 @@ class LLMSQLWrapper:
             registration_date DATE
         )
         """
+        enable_rls_query = f"ALTER TABLE {schema_name}.{table_name} ENABLE ROW LEVEL SECURITY;"
+        
+        create_rls_policy_query = f"""
+        CREATE POLICY user_{user_id}_own_data_policy ON {schema_name}.{table_name}
+        FOR ALL
+        USING (current_user = '{username}');
+        """
+        
         check_data_query = f"SELECT COUNT(*) FROM {schema_name}.{table_name}"
         insert_data_query = f"""
         INSERT INTO {schema_name}.{table_name} (name, email, age, city, registration_date)
@@ -537,12 +568,14 @@ class LLMSQLWrapper:
         )
         """
         try:
-            with self.get_db_connection() as conn:
+            with self.get_superuser_connection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(create_schema_query)
-                    app.logger.info(f"Schema {schema_name} created or already exists.")
                     cur.execute(create_table_query)
                     app.logger.info(f"Table {schema_name}.{table_name} created or already exists.")
+                    cur.execute(enable_rls_query)
+                    app.logger.info(f"RLS enabled on table {schema_name}.{table_name}.")
+                    cur.execute(create_rls_policy_query)
+                    app.logger.info(f"RLS policy created for table {schema_name}.{table_name}.")
                     cur.execute(check_data_query)
                     row_count = cur.fetchone()[0]
                     if row_count == 0:
@@ -559,15 +592,13 @@ class LLMSQLWrapper:
     def create_user(self, username, password, email):
         password_hash = generate_password_hash(password)
         try:
-            with self.get_db_connection() as conn:
+            with self.get_superuser_connection() as conn:
                 with conn.cursor() as cur:
-                    # Check if the role already exists
-                    cur.execute(f"SELECT 1 FROM pg_roles WHERE rolname = %s", (username,))
-                    role_exists = cur.fetchone()
-
-                    if not role_exists:
-                        # Create the PostgreSQL role if it doesn't exist
-                        cur.execute(f"CREATE ROLE {username} LOGIN PASSWORD '{password}'")
+                    # Create the PostgreSQL user if it doesn't exist
+                    cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (username,))
+                    if not cur.fetchone():
+                        cur.execute(f"CREATE ROLE {username} LOGIN PASSWORD %s", (password,))
+                        app.logger.info(f"Created PostgreSQL role: {username}")
                     
                     # Insert the user record in the `users` table
                     cur.execute("""
@@ -577,18 +608,21 @@ class LLMSQLWrapper:
                     """, (username, password_hash, email))
                     user_id = cur.fetchone()[0]
                     
-                    # Create the schema for the user
-                    cur.execute(f"CREATE SCHEMA IF NOT EXISTS user_{user_id}")
-                    cur.execute(f"GRANT USAGE ON SCHEMA user_{user_id} TO {username}")
-                    cur.execute(f"ALTER DEFAULT PRIVILEGES IN SCHEMA user_{user_id} GRANT ALL ON TABLES TO {username}")
+                    # Create the schema for the user and set the owner
+                    schema_name = f"user_{user_id}"
+                    cur.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name} AUTHORIZATION {username}")
+                    cur.execute(f"ALTER SCHEMA {schema_name} OWNER TO {username}")
+                    
+                    # Grant necessary permissions
+                    cur.execute(f"GRANT ALL ON SCHEMA {schema_name} TO {username}")
+                    cur.execute(f"ALTER DEFAULT PRIVILEGES IN SCHEMA {schema_name} GRANT ALL ON TABLES TO {username}")
                     
                     conn.commit()
-            self.create_user_table(user_id)
-            return user_id
+                self.user_passwords[username] = password  # Store the password for connection purposes
+                return user_id
         except psycopg2.IntegrityError:
             conn.rollback()
             raise ValueError("Username or email already exists")
-
 
     def get_user(self, user_id):
         result = self.execute_with_retry("""
@@ -612,14 +646,19 @@ class LLMSQLWrapper:
             user = User(id=user_data['id'], username=user_data['username'], password_hash=user_data['password_hash'])
             if user.check_password(password):
                 app.logger.info(f"User {username} authenticated successfully.")
+                self.user_passwords[username] = password  # Store the plain password for connection purposes
                 try:
-                    self.create_user_table(user.id)
+                    self.create_user_table(user.id, username)
                     app.logger.info(f"User table for user_id {user.id} created or verified.")
                 except Exception as e:
                     app.logger.error(f"Error creating user table for user_id {user.id}: {str(e)}")
                 return user
         app.logger.warning(f"Authentication failed for user {username}")
         return None
+    
+    def clear_stored_passwords(self):
+        self.user_passwords.clear()
+        self.user_connections.clear()
 
 def initialize_wrapper():
     global wrapper
@@ -632,6 +671,7 @@ def initialize_wrapper():
             'port': os.getenv('DB_PORT')
         }
         wrapper = LLMSQLWrapper(db_config)
+        wrapper.clear_stored_passwords()
         app.logger.info("LLMSQLWrapper initialized.")
 
 @app.route('/register', methods=['POST'])
@@ -658,21 +698,21 @@ def login():
     
     user = wrapper.authenticate_user(username, password)
     if user:
-        session['user_id'] = user.id
+        logger.debug(f"Before login_user, session: {session.items()}")
+        login_user(user)
+        logger.debug(f"After login_user, session: {session.items()}")
         return jsonify({"message": "Logged in successfully", "user_id": user.id}), 200
     else:
         return jsonify({"error": "Invalid username or password"}), 401
 
 @app.route('/logout', methods=['POST'])
-def logout():
-    if 'user_id' in session:
-        session.pop('user_id', None)
-        return jsonify({"message": "Logged out successfully"}), 200
-    else:
-        return jsonify({"message": "No user to log out"}), 200  
+@login_required
+def logout(): 
+    logout_user()
+    session.clear()
+    return jsonify({"message": "Logged out successfully"}), 200
 
-
-@app.route('/submission-history', methods=['GET', 'POST'])
+@app.route('/submission-history', methods=['GET'])
 @login_required
 def get_submission_history():
     try:
@@ -691,32 +731,32 @@ def get_submission_history():
 @app.route('/execute-sql', methods=['POST'])
 @login_required
 def execute_sql():
-    app.logger.info("Received POST request to /execute-sql")
-    app.logger.debug(f"Headers: {request.headers}")
-    app.logger.debug(f"Body: {request.get_json()}")
-    
-    sql = request.json.get('sql')
-    if not sql:
-        app.logger.error("SQL query is not provided")
-        return jsonify({"error": "SQL query is not provided"}), 400
-
-    app.logger.info(f"Executing SQL query: {sql}")
-
     try:
-        result = wrapper.execute_query(sql, current_user.id)
+        sql = request.json.get('sql')
+        if not sql:
+            return jsonify({"error": "SQL query is not provided"}), 400
+        
+        result = wrapper.execute_query(sql, current_user.id, current_user.username)
+        
         response = {
             "sql": sql,
             "result": result
         }
-        app.logger.info("Successfully executed SQL query")
-        return json.dumps(response, cls=DateTimeEncoder), 200, {'Content-Type': 'application/json'}
-    except Exception as e:
-        app.logger.error(f"An error occurred: {str(e)}")
-        app.logger.error(traceback.format_exc())
+        return jsonify(response), 200
+    except errors.InsufficientPrivilege as e:
         return jsonify({
-            "error": str(e),
-            "explanation": f"An error occurred while executing the query: {str(e)}"
+            "error": "Insufficient Privilege",
+            "message": str(e),
+            "query": sql
+        }), 403
+    except Exception as e:
+        app.logger.error(f"Unhandled exception: {str(e)}")
+        return jsonify({
+            "error": "Execution Error",
+            "message": str(e),
+            "query": sql
         }), 500
+
 
 @app.route('/ask', methods=['POST'])
 @login_required
@@ -724,7 +764,6 @@ def ask():
     app.logger.info("Received POST request to /ask")
     app.logger.debug(f"Headers: {request.headers}")
     app.logger.debug(f"Body: {request.get_json()}")
-    
     data = request.json
     question = data.get('question')
     is_practice = data.get('is_practice', False)
@@ -765,10 +804,10 @@ def fetch_schema():
         app.logger.error(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/submit-solution', methods=['POST'])
+@app.route('/submit-solution', methods=['POST'])
 @login_required
 def submit_solution():
-    app.logger.info("Received POST request to /api/submit-solution")
+    app.logger.info("Received POST request to /submit-solution")
     app.logger.debug(f"Headers: {request.headers}")
     app.logger.debug(f"Body: {request.get_json()}")
     
@@ -798,6 +837,13 @@ def submit_solution():
         app.logger.error(f"An error occurred: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
+
+@app.route('/check-auth', methods=['GET'])
+def check_auth():
+    if current_user.is_authenticated:
+        return jsonify({"authenticated": True, "user_id": current_user.id}), 200
+    else:
+        return jsonify({"authenticated": False}), 401
 
 if __name__ == '__main__':
     initialize_wrapper()  # Initialize the wrapper before starting the app
