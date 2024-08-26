@@ -1,13 +1,24 @@
+'use client';
+
 import React, { useState } from 'react';
 import { SimpleTreeView, TreeItem } from '@mui/x-tree-view';
-import { Database, RefreshCw } from 'lucide-react';
+import { Database, RefreshCw, Heart } from 'lucide-react';
 
 const renderTree = (nodes) => (
-  nodes.map((node) => (
-    <TreeItem key={node.id} itemId={node.id} label={node.label}>
-      {Array.isArray(node.children) ? renderTree(node.children) : null}
-    </TreeItem>
-  ))
+  nodes.map((node) => {
+    const isHattieNode = node.label.toLowerCase().includes('hattie');
+
+    return (
+      <TreeItem key={node.id} itemId={node.id} label={
+        <span className="flex items-center">
+          {node.label}
+          {isHattieNode && <Heart size={16} className="ml-1 text-red-500" />} {/* Minimal Heart icon */}
+        </span>
+      }>
+        {Array.isArray(node.children) ? renderTree(node.children) : null}
+      </TreeItem>
+    );
+  })
 );
 
 export default function DatabaseSchema({ schemaData, onRefresh }) {
@@ -22,7 +33,7 @@ export default function DatabaseSchema({ schemaData, onRefresh }) {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-4" style={{ minHeight: '430px' }}>
+    <div className="bg-white rounded-lg p-4" style={{ minHeight: '430px' }}>
       <div className="flex justify-between items-center mb-2">
         <h2 className="text-m font-semibold text-gray-700 flex items-center">
           <Database size={24} className="mr-2" />

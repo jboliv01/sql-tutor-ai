@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useRef, useEffect } from 'react';
 import { BookOpen, ChevronDown } from 'lucide-react';
 
@@ -13,6 +15,7 @@ const SQL_PRACTICE_CATEGORIES = [
   "Performance Optimization and Indexing",
   "Advanced SQL Concepts"
 ];
+
 type SQLPracticeProps = {
   onSelectCategory: (category: string) => void;
   isLoading: boolean;
@@ -28,7 +31,6 @@ const SQLPractice: React.FC<SQLPracticeProps> = ({ onSelectCategory, isLoading }
         setShowCategories(false);
       }
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);

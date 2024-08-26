@@ -1,5 +1,5 @@
 // src/utils/sqlSolutionHandler.ts
-import { ChatMessage } from '../types';
+import { ChatMessage } from './types';
 
 export interface SqlError {
   message: string;

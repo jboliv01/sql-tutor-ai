@@ -428,17 +428,22 @@ class LLMSQLWrapper:
     def validate_solution(self, sql_query, results, question_id, user_id, username):
         schema_str = str(self.get_schema(username))
         
-        # Fetch the current question from the database
-        question_result = self.execute_with_retry("""
-            SELECT category, question
-            FROM question_history
-            WHERE id = %s AND user_id = %s
-        """, (question_id, user_id))
+        # Handle default question
+        if question_id == '-1':
+            category = "Basic SQL Syntax"
+            question_text = f"Select the top 5 rows from your schema's sample_users table."
+        else:
+            # Fetch the current question from the database
+            question_result = self.execute_with_retry("""
+                SELECT category, question
+                FROM question_history
+                WHERE id = %s AND user_id = %s
+            """, (question_id, user_id))
 
-        if not question_result:
-            raise ValueError(f"No question found with id {question_id}")
-        
-        category, question_text = question_result[0]['category'], question_result[0]['question']
+            if not question_result:
+                raise ValueError(f"No question found with id {question_id}")
+            
+            category, question_text = question_result[0]['category'], question_result[0]['question']
 
         app.logger.info(f"Validating solution for question ID: {question_id}")
         app.logger.info(f"Question category: {category}")
@@ -501,7 +506,7 @@ class LLMSQLWrapper:
                 INSERT INTO submission_history 
                 (user_id, question_id, correctness_score, efficiency_score, style_score, overall_feedback, pass_fail)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (user_id, question_id, correctness_score, efficiency_score, style_score, overall_feedback, pass_fail))
+            """, (user_id, question_id if question_id != '-1' else None, correctness_score, efficiency_score, style_score, overall_feedback, pass_fail))
 
             app.logger.info(f"Inserted submission record for question ID: {question_id}, Pass/Fail: {pass_fail}")
             
