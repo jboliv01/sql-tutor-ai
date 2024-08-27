@@ -365,7 +365,7 @@ class LLMSQLWrapper:
 
             Category: {category}
 
-            Tables: [Comma-separated list of relevant tables]
+            Tables: [Comma-separated list of relevant tables and their schema]
 
             Hint: [Provide a hint here]
 

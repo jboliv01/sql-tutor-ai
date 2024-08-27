@@ -1,9 +1,10 @@
-'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import PracticeSection from './PracticeSection';
 import FeedbackDisplay from '../feedback/FeedbackDisplay';
 import { handleSolutionSubmit } from '../../../utils/sqlSolutionHandler';
 import { SchemaItem, QueryResult, SqlError, SubmissionHistoryItem, CurrentQuestion, ChatMessage } from '../../../utils/types';
+import SQLPractice from './PracticeButton';
+import { BookOpen } from 'lucide-react';
 
 interface PracticeTabProps {
   schemaData: SchemaItem[];
@@ -14,7 +15,7 @@ interface PracticeTabProps {
 
 const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory, fetchSubmissionHistory, username }) => {
   const userSchema = `user_${username}`;
-  const [sqlQuery, setSqlQuery] = useState(`SELECT * FROM ${userSchema}.sample_users LIMIT 5`);
+  const [sqlQuery, setSqlQuery] = useState('');
   const [queryResults, setQueryResults] = useState<QueryResult[]>([]);
   const [sqlError, setSqlError] = useState<SqlError | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -25,50 +26,37 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
   const [currentPage, setCurrentPage] = useState(1);
   const [questionError, setQuestionError] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [showCategorySelection, setShowCategorySelection] = useState(true);
   const rowsPerPage = 5;
 
-  const getDefaultQuestion = useCallback((): CurrentQuestion => ({
-    id: '-1',
-    category: 'Basic SQL Syntax',
-    question: `Select the top 5 rows from your schema's sample_users table.`,
-    tables: `${userSchema}.sample_users`,
-    hint: 'Use the SELECT statement with a LIMIT clause.',
-  }), [userSchema]);
-
-  const fetchQuestion = useCallback(async (category?: string) => {
+  const fetchQuestion = useCallback(async (category: string) => {
     setIsLoading(true);
     setQuestionError(null);
 
     try {
-      if (!category) {
-        // If no category is provided, use the default question
-        const defaultQuestion = getDefaultQuestion();
-        setCurrentQuestion(defaultQuestion);
-        setSqlQuery(`SELECT * FROM ${userSchema}.sample_users LIMIT 5`);
+      const response = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: `Generate a practice question for the category: ${category}`,
+          is_practice: true,
+          category: category,
+          userSchema: userSchema,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch practice question');
+      }
+
+      const data = await response.json();
+
+      if (data.response && typeof data.response === 'object') {
+        const { id, category, question, tables, hint } = data.response;
+        setCurrentQuestion({ id, category, question, tables, hint });
+        setSqlQuery(''); // Reset SQL query when a new question is fetched
       } else {
-        const response = await fetch('/api/ask', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            question: `Generate a practice question for the category: ${category}`,
-            is_practice: true,
-            category: category,
-            userSchema: userSchema,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch practice question');
-        }
-
-        const data = await response.json();
-
-        if (data.response && typeof data.response === 'object') {
-          const { id, category, question, tables, hint } = data.response;
-          setCurrentQuestion({ id, category, question, tables, hint });
-        } else {
-          throw new Error('Unexpected response format from server');
-        }
+        throw new Error('Unexpected response format from server');
       }
     } catch (error) {
       console.error('Error fetching practice question:', error);
@@ -76,11 +64,7 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
     } finally {
       setIsLoading(false);
     }
-  }, [userSchema, getDefaultQuestion]);
-
-  useEffect(() => {
-    fetchQuestion();
-  }, [fetchQuestion]);
+  }, [userSchema]);
 
   const handleSqlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,6 +101,15 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
 
   const handleCategorySelect = async (category: string) => {
     await fetchQuestion(category);
+    setShowCategorySelection(false);
+  };
+
+  const handleReturnToCategories = () => {
+    setShowCategorySelection(true);
+    setCurrentQuestion(null);
+    setSqlQuery('');
+    setQueryResults([]);
+    setSqlError(null);
   };
 
   const onSolutionSubmit = async () => {
@@ -140,7 +133,6 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
         setQueryResults,
         setCurrentPage
       );
-      console.log('Received feedback:', feedback);
       setSubmissionFeedback(feedback);
 
       const correctSolutionMatch = feedback.match(/Example of improved query:\s*([\s\S]*?)(?=\n\n|$)/);
@@ -152,7 +144,6 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
       await fetchSubmissionHistory();
     } catch (error) {
       console.error('Error submitting solution:', error);
-      // Error is already set by handleSolutionSubmit
     } finally {
       setIsLoading(false);
     }
@@ -164,16 +155,20 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
 
   const handleNextChallenge = async () => {
     setShowFeedback(false);
-    await fetchQuestion(currentQuestion?.category);
+    setShowCategorySelection(true);
   };
 
   const onRetryQuestion = () => {
-    fetchQuestion(currentQuestion?.category);
+    if (currentQuestion) {
+      fetchQuestion(currentQuestion.category);
+    }
   };
 
   return (
     <div>
-      {showFeedback ? (
+      {showCategorySelection ? (
+        <SQLPractice onSelectCategory={handleCategorySelect} isLoading={isLoading} />
+      ) : showFeedback ? (
         <FeedbackDisplay
           feedback={submissionFeedback || ''}
           userSolution={sqlQuery}
@@ -182,23 +177,37 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
           onNextChallenge={handleNextChallenge}
         />
       ) : (
-        <PracticeSection
-          currentQuestion={currentQuestion}
-          sqlQuery={sqlQuery}
-          setSqlQuery={setSqlQuery}
-          handleSqlSubmit={handleSqlSubmit}
-          onSolutionSubmit={onSolutionSubmit}
-          handleCategorySelect={handleCategorySelect}
-          isLoading={isLoading}
-          queryResults={queryResults}
-          sqlError={sqlError}
-          currentPage={currentPage}
-          setCurrentPage={setCurrentPage}
-          rowsPerPage={rowsPerPage}
-          username={username}
-          questionError={questionError}
-          onRetryQuestion={onRetryQuestion}
-        />
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-semibold text-indigo-800 flex items-center">
+              <BookOpen className="mr-2 h-6 w-6" />
+              Question
+            </h2>
+            <button
+              onClick={handleReturnToCategories}
+              className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-md hover:bg-indigo-200 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            >
+              Change Category
+            </button>
+          </div>
+          <PracticeSection
+            currentQuestion={currentQuestion}
+            sqlQuery={sqlQuery}
+            setSqlQuery={setSqlQuery}
+            handleSqlSubmit={handleSqlSubmit}
+            onSolutionSubmit={onSolutionSubmit}
+            handleCategorySelect={handleCategorySelect}
+            isLoading={isLoading}
+            queryResults={queryResults}
+            sqlError={sqlError}
+            currentPage={currentPage}
+            setCurrentPage={setCurrentPage}
+            rowsPerPage={rowsPerPage}
+            username={username}
+            questionError={questionError}
+            onRetryQuestion={onRetryQuestion}
+          />
+        </div>
       )}
     </div>
   );

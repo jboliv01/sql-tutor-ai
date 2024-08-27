@@ -10,10 +10,10 @@ interface TabNavigationProps {
 
 const TabNavigation: React.FC<TabNavigationProps> = ({ activeTab, setActiveTab }) => {
   const tabs = [
-    { id: 'chat', label: 'Chat', icon: MessageSquare },
-    { id: 'query', label: 'Query', icon: Database },
     { id: 'practice', label: 'Practice', icon: Code },
+    { id: 'explore', label: 'Explore', icon: Database },
     { id: 'submissions', label: 'Submissions', icon: FileText },
+    { id: 'chat', label: 'Chat', icon: MessageSquare },
   ];
 
   return (

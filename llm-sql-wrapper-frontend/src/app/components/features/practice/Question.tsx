@@ -1,22 +1,15 @@
 'use client';
-
 import React, { useState } from 'react';
-import { BookOpen, Database, Lightbulb } from 'lucide-react';
+import { BookOpen, Database, Lightbulb, MessageCircleQuestionIcon } from 'lucide-react';
 
 const Question = ({ question }) => {
   const [revealHint, setRevealHint] = useState(false);
 
   return (
     <div className="bg-white rounded-lg p-6 space-y-4">
-      <h3 className="text-2xl pb-2 font-semibold text-indigo-800 flex items-center">
-        <BookOpen className="mr-2 h-6 w-6" />
-        Question
-      </h3>
-      
       <div className="space-y-4">
         <div className="bg-blue-50 p-4 rounded-lg">
-          <h4 className="font-semibold text-blue-800 mb-2">Category: {question.category}</h4>
-          <p className="text-blue-700">{question.question}</p>
+          <p className="text-blue-700 text-lg">{question.question}</p>
         </div>
         
         <div className="bg-green-50 p-4 rounded-lg">

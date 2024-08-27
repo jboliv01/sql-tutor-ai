@@ -4,7 +4,6 @@ import AceEditor from 'react-ace';
 import 'ace-builds/src-noconflict/mode-sql';
 import 'ace-builds/src-noconflict/theme-textmate';
 import Question from './Question';
-import SQLPractice from './PracticeButton';
 import QueryResults from '../query/QueryResults';
 import { PracticeSectionProps } from '../../../utils/types';
 
@@ -27,7 +26,7 @@ const PracticeSection: React.FC<PracticeSectionProps> = ({
 }) => {
   return (
     <div className="space-y-6">
-      {/* <h2 className="text-2xl font-semibold text-indigo-800">Welcome, {username}!</h2> */}
+    
       {questionError ? (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
           <strong className="font-bold">Error: </strong>
@@ -75,7 +74,6 @@ const PracticeSection: React.FC<PracticeSectionProps> = ({
           editorProps={{ $blockScrolling: true }}
         />
         <div className="flex justify-between items-center space-x-4">
-          <SQLPractice onSelectCategory={handleCategorySelect} isLoading={isLoading} />
           <div className="flex space-x-4">
             <button
               type="button"
@@ -84,7 +82,7 @@ const PracticeSection: React.FC<PracticeSectionProps> = ({
               disabled={isLoading}
             >
               <Play size={20} className="mr-2" />
-              {isLoading ? 'Executing...' : 'Execute SQL'}
+              {isLoading ? 'Executing...' : 'Test SQL'}
             </button>
             <button
               type="button"

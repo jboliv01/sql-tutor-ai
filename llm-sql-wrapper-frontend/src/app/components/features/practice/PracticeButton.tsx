@@ -1,19 +1,17 @@
-'use client';
-
-import React, { useState, useRef, useEffect } from 'react';
-import { BookOpen, ChevronDown } from 'lucide-react';
+import React, { useState } from 'react';
+import { BookOpen, ChevronRight, Code, Database, Filter, GitForkIcon, GitMerge, LayoutGrid, LineChart, Maximize, Zap } from 'lucide-react';
 
 const SQL_PRACTICE_CATEGORIES = [
-  "Basic SQL Syntax",
-  "Data Manipulation (SELECT, INSERT, UPDATE, DELETE)",
-  "Filtering and Sorting",
-  "Joins and Relationships",
-  "Aggregations and GROUP BY",
-  "Subqueries and Common Table Expressions (CTEs)",
-  "Window Functions",
-  "Data Modeling and Schema Design",
-  "Performance Optimization and Indexing",
-  "Advanced SQL Concepts"
+  { name: "Basic SQL Syntax", icon: Code },
+  { name: "Data Manipulation", icon: Database },
+  { name: "Filtering and Sorting", icon: Filter },
+  { name: "Joins and Relationships", icon: GitForkIcon },
+  { name: "Aggregations and GROUP BY", icon: LayoutGrid },
+  { name: "Subqueries and CTEs", icon: GitMerge },
+  { name: "Window Functions", icon: Maximize },
+  { name: "Data Modeling and Schema Design", icon: Database },
+  { name: "Performance Optimization", icon: Zap },
+  { name: "Advanced SQL Concepts", icon: LineChart }
 ];
 
 type SQLPracticeProps = {
@@ -22,53 +20,50 @@ type SQLPracticeProps = {
 };
 
 const SQLPractice: React.FC<SQLPracticeProps> = ({ onSelectCategory, isLoading }) => {
-  const [showCategories, setShowCategories] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowCategories(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const handleCategorySelect = (category: string) => {
-    setShowCategories(false);
-    onSelectCategory(category);
+    setSelectedCategory(category);
+  };
+
+  const handleNextClick = () => {
+    if (selectedCategory) {
+      onSelectCategory(selectedCategory);
+    }
   };
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-8 space-y-6 h-full">
+      <h2 className="text-3xl pb-10 font-bold text-indigo-800 flex items-center">
+        <BookOpen className="mr-3 h-8 w-8 text-indigo-600" />
+        Select a category to start your SQL practice session
+      </h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 h-fit">
+        {SQL_PRACTICE_CATEGORIES.map(({ name, icon: Icon }) => (
+          <button
+            key={name}
+            onClick={() => handleCategorySelect(name)}
+            className={`p-4 rounded-lg transition-all duration-200 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-300 ${
+              selectedCategory === name
+                ? 'bg-indigo-500 text-white shadow-md'
+                : 'bg-white text-gray-700 hover:bg-indigo-100 hover:text-indigo-700'
+            }`}
+          >
+            <div className="flex items-center space-x-3">
+              <Icon className={`h-6 w-6 ${selectedCategory === name ? 'text-indigo-100' : 'text-indigo-500'}`} />
+              <span className="text-lg font-medium">{name}</span>
+            </div>
+          </button>
+        ))}
+      </div>
       <button
-        onClick={() => setShowCategories(!showCategories)}
-        className="px-6 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-300 flex items-center justify-center"
-        disabled={isLoading}
+        onClick={handleNextClick}
+        className="mt-6 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-300 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 transition-transform duration-200"
+        disabled={isLoading || !selectedCategory}
       >
-        <BookOpen size={20} className="mr-2" />
-        Start a new SQL Challenge
-        <ChevronDown size={20} className="ml-2" />
+        Start Challenge
+        <ChevronRight className="ml-2 h-5 w-5" />
       </button>
-      {showCategories && (
-        <div className="absolute z-10 mt-2 w-64 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
-          <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
-            {SQL_PRACTICE_CATEGORIES.map((category, index) => (
-              <button
-                key={index}
-                onClick={() => handleCategorySelect(category)}
-                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-                role="menuitem"
-              >
-                {category}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

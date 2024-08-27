@@ -69,7 +69,7 @@ export function Home() {
               defaultQuery={defaultQuery}
             />
           )}
-          {activeTab === 'query' && (
+          {activeTab === 'explore' && (
             <QueryTab
               schemaData={schemaData}
               username={username}
