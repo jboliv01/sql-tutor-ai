@@ -1,4 +1,7 @@
-import React, { useState, useCallback } from 'react';
+
+'use client';
+
+import React, { useState, useCallback, useEffect } from 'react';
 import PracticeSection from './PracticeSection';
 import FeedbackDisplay from '../feedback/FeedbackDisplay';
 import { handleSolutionSubmit } from '../../../utils/sqlSolutionHandler';
@@ -26,8 +29,19 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
   const [currentPage, setCurrentPage] = useState(1);
   const [questionError, setQuestionError] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const [showCategorySelection, setShowCategorySelection] = useState(true);
   const rowsPerPage = 5;
+
+  useEffect(() => {
+    // Load persisted question state from localStorage when component mounts
+    const savedQuestion = localStorage.getItem('currentQuestion');
+    const savedQuery = localStorage.getItem('currentSqlQuery');
+    if (savedQuestion) {
+      setCurrentQuestion(JSON.parse(savedQuestion));
+    }
+    if (savedQuery) {
+      setSqlQuery(savedQuery);
+    }
+  }, []);
 
   const fetchQuestion = useCallback(async (category: string) => {
     setIsLoading(true);
@@ -53,8 +67,12 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
 
       if (data.response && typeof data.response === 'object') {
         const { id, category, question, tables, hint } = data.response;
-        setCurrentQuestion({ id, category, question, tables, hint });
-        setSqlQuery(''); // Reset SQL query when a new question is fetched
+        const newQuestion = { id, category, question, tables, hint };
+        setCurrentQuestion(newQuestion);
+        setSqlQuery('');
+        // Persist the new question and reset the query in localStorage
+        localStorage.setItem('currentQuestion', JSON.stringify(newQuestion));
+        localStorage.setItem('currentSqlQuery', '');
       } else {
         throw new Error('Unexpected response format from server');
       }
@@ -101,15 +119,16 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
 
   const handleCategorySelect = async (category: string) => {
     await fetchQuestion(category);
-    setShowCategorySelection(false);
   };
 
   const handleReturnToCategories = () => {
-    setShowCategorySelection(true);
     setCurrentQuestion(null);
     setSqlQuery('');
     setQueryResults([]);
     setSqlError(null);
+    // Clear persisted question state
+    localStorage.removeItem('currentQuestion');
+    localStorage.removeItem('currentSqlQuery');
   };
 
   const onSolutionSubmit = async () => {
@@ -142,6 +161,10 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
       setShowFeedback(true);
 
       await fetchSubmissionHistory();
+      
+      // Clear persisted question state after submission
+      localStorage.removeItem('currentQuestion');
+      localStorage.removeItem('currentSqlQuery');
     } catch (error) {
       console.error('Error submitting solution:', error);
     } finally {
@@ -155,7 +178,11 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
 
   const handleNextChallenge = async () => {
     setShowFeedback(false);
-    setShowCategorySelection(true);
+    setCurrentQuestion(null);
+    setSqlQuery('');
+    // Clear persisted question state
+    localStorage.removeItem('currentQuestion');
+    localStorage.removeItem('currentSqlQuery');
   };
 
   const onRetryQuestion = () => {
@@ -164,9 +191,14 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
     }
   };
 
+  // Update localStorage whenever sqlQuery changes
+  useEffect(() => {
+    localStorage.setItem('currentSqlQuery', sqlQuery);
+  }, [sqlQuery]);
+
   return (
     <div>
-      {showCategorySelection ? (
+      {!currentQuestion ? (
         <SQLPractice onSelectCategory={handleCategorySelect} isLoading={isLoading} />
       ) : showFeedback ? (
         <FeedbackDisplay

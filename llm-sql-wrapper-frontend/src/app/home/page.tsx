@@ -9,7 +9,7 @@ import SubmissionsTab from '../components/features/feedback/SubmissionsTab';
 import { SchemaItem, SubmissionHistoryItem } from '../utils/types';
 
 export function Home() {
-  const [activeTab, setActiveTab] = useState('chat');
+  const [activeTab, setActiveTab] = useState('practice');
   const [schemaData, setSchemaData] = useState<SchemaItem[]>([]);
   const [submissionHistory, setSubmissionHistory] = useState<SubmissionHistoryItem[]>([]);
   const [username, setUsername] = useState<string>('');
@@ -59,7 +59,6 @@ export function Home() {
         {/* <TabNavigation activeTab={activeTab} setActiveTab={setActiveTab} /> */}
         <div className="bg-white rounded-xl shadow-lg p-6">
         <TabNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
-          {activeTab === 'chat' && <ChatTab username={username} />}
           {activeTab === 'practice' && (
             <PracticeTab
               schemaData={schemaData}
@@ -69,6 +68,7 @@ export function Home() {
               defaultQuery={defaultQuery}
             />
           )}
+          {activeTab === 'chat' && <ChatTab username={username} />}
           {activeTab === 'explore' && (
             <QueryTab
               schemaData={schemaData}

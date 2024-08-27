@@ -82,7 +82,7 @@ const PracticeSection: React.FC<PracticeSectionProps> = ({
               disabled={isLoading}
             >
               <Play size={20} className="mr-2" />
-              {isLoading ? 'Executing...' : 'Test SQL'}
+              {isLoading ? 'Executing...' : 'Run Query'}
             </button>
             <button
               type="button"
@@ -91,7 +91,7 @@ const PracticeSection: React.FC<PracticeSectionProps> = ({
               disabled={isLoading || !currentQuestion}
             >
               <Send size={20} className="mr-2" />
-              {isLoading ? 'Submitting...' : 'Submit Solution'}
+              {isLoading ? 'Submitting...' : 'Submit Query'}
             </button>
           </div>
         </div>
