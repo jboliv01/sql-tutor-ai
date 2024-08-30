@@ -1,22 +1,22 @@
 import React, { useState } from 'react';
-import { BookOpen, ChevronRight, Code, Database, Filter, GitForkIcon, GitMerge, LayoutGrid, LineChart, Maximize, Zap } from 'lucide-react';
+import { BookOpen, ChevronRight, Code, Database, Filter, GitForkIcon, GitMerge, LayoutGrid, LineChart, Maximize, Zap, Loader } from 'lucide-react';
 
 const SQL_PRACTICE_CATEGORIES = [
-  { name: "Basic SQL Syntax", icon: Code },
-  { name: "Data Manipulation", icon: Database },
-  { name: "Filtering and Sorting", icon: Filter },
-  { name: "Joins and Relationships", icon: GitForkIcon },
-  { name: "Aggregations and GROUP BY", icon: LayoutGrid },
-  { name: "Subqueries and CTEs", icon: GitMerge },
-  { name: "Window Functions", icon: Maximize },
-  { name: "Data Modeling and Schema Design", icon: Database },
-  { name: "Performance Optimization", icon: Zap },
-  { name: "Advanced SQL Concepts", icon: LineChart }
+ { name: "Basic SQL Syntax", icon: Code },
+ { name: "Data Manipulation", icon: Database },
+ { name: "Filtering and Sorting", icon: Filter },
+ { name: "Joins and Relationships", icon: GitForkIcon },
+ { name: "Aggregations and GROUP BY", icon: LayoutGrid },
+ { name: "Subqueries and CTEs", icon: GitMerge },
+ { name: "Window Functions", icon: Maximize },
+ { name: "Data Modeling and Schema Design", icon: Database },
+ { name: "Performance Optimization", icon: Zap },
+ { name: "Advanced SQL Concepts", icon: LineChart }
 ];
 
 type SQLPracticeProps = {
-  onSelectCategory: (category: string) => void;
-  isLoading: boolean;
+ onSelectCategory: (category: string) => void;
+ isLoading: boolean;
 };
 
 const SQLPractice: React.FC<SQLPracticeProps> = ({ onSelectCategory, isLoading }) => {
@@ -48,6 +48,7 @@ const SQLPractice: React.FC<SQLPracticeProps> = ({ onSelectCategory, isLoading }
                 ? 'bg-indigo-500 text-white shadow-md'
                 : 'bg-white text-gray-700 hover:bg-indigo-100 hover:text-indigo-700'
             }`}
+            disabled={isLoading}
           >
             <div className="flex items-center space-x-3">
               <Icon className={`h-6 w-6 ${selectedCategory === name ? 'text-indigo-100' : 'text-indigo-500'}`} />
@@ -61,8 +62,17 @@ const SQLPractice: React.FC<SQLPracticeProps> = ({ onSelectCategory, isLoading }
         className="mt-6 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-300 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 transition-transform duration-200"
         disabled={isLoading || !selectedCategory}
       >
-        Start Challenge
-        <ChevronRight className="ml-2 h-5 w-5" />
+        {isLoading ? (
+          <>
+            <Loader className="animate-spin mr-2 h-5 w-5" />
+            Generating Question...
+          </>
+        ) : (
+          <>
+            Start Challenge
+            <ChevronRight className="ml-2 h-5 w-5" />
+          </>
+        )}
       </button>
     </div>
   );

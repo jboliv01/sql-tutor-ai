@@ -20,6 +20,8 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 import time
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+import sqlparse
+from decimal import Decimal
 
 # Load environment variables
 load_dotenv('.env.local')
@@ -44,11 +46,29 @@ login_manager.login_view = 'login'
 
 wrapper = None  # Global wrapper instance
 
+MAX_TABLES_PER_USER = 10  # Set the maximum number of tables a user can create
+
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        elif isinstance(obj, (date, datetime)):
+            return obj.isoformat()
+        elif hasattr(obj, '__json__'):
+            return obj.__json__()
+        return super(CustomJSONEncoder, self).default(obj)
+
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, (date, datetime)):
             return obj.isoformat()
         return super().default(obj)
+    
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super(DecimalEncoder, self).default(obj)
 
 class User(UserMixin):
     def __init__(self, id, username, password_hash):
@@ -77,20 +97,19 @@ class LLMSQLWrapper:
         self.model = 'llama-3.1-70b-versatile'
         self.groq_chat = ChatGroq(groq_api_key=self.groq_api_key, model_name=self.model)
         self.memory = ConversationBufferWindowMemory(k=5, memory_key="chat_history", return_messages=True)
-        # self.schema = self.get_schema()
 
         # Apply retry logic to the sequence and table creation
         self.create_sequences_and_tables()
 
     def get_superuser_connection(self):
         return psycopg2.connect(**self.superuser_config)
-    
+
     def get_user_connection(self, username):
         if username not in self.user_connections:
             user_config = self.superuser_config.copy()
             user_config['user'] = username
             user_config['password'] = self.user_passwords.get(username)
-            
+
             if not user_config['password']:
                 raise psycopg2.OperationalError(f"No password found for user {username}. Please log in again.")
 
@@ -100,7 +119,6 @@ class LLMSQLWrapper:
                 app.logger.error(f"Failed to connect for user {username}: {str(e)}")
                 raise
         return self.user_connections[username]
-
 
     def create_sequences_and_tables(self):
         try:
@@ -217,7 +235,7 @@ class LLMSQLWrapper:
 
                 for schema_name in schemas:
                     schema_name = schema_name[0]
-                    
+
                     # Get tables for each schema
                     cur.execute("""
                         SELECT table_name 
@@ -225,13 +243,13 @@ class LLMSQLWrapper:
                         WHERE table_schema = %s
                     """, (schema_name,))
                     tables = cur.fetchall()
-                    
+
                     schema_item = {
                         "id": f"schema-{schema_name}",
                         "label": schema_name,
                         "children": []
                     }
-                    
+
                     for table in tables:
                         table_name = table[0]
                         cur.execute("""
@@ -240,7 +258,7 @@ class LLMSQLWrapper:
                             WHERE table_schema = %s AND table_name = %s
                         """, (schema_name, table_name))
                         columns = cur.fetchall()
-                        
+
                         table_item = {
                             "id": f"table-{schema_name}-{table_name}",
                             "label": table_name,
@@ -252,11 +270,11 @@ class LLMSQLWrapper:
                             ]
                         }
                         schema_item["children"].append(table_item)
-                    
+
                     schema.append(schema_item)
 
         return schema
-    
+
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=1, min=1, max=10),
@@ -271,21 +289,88 @@ class LLMSQLWrapper:
                     return cur.fetchall()
                 return None
 
+
     def execute_query(self, query, user_id, username):
         try:
+            statements = sqlparse.split(query)
+            results = []
+
             with self.get_user_connection(username) as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     cur.execute(f"SET search_path TO user_{username}, public")
-                    cur.execute(query)
-                    result = cur.fetchall()
-            self.add_to_query_history(query, result, user_id)
-            return result
+
+                    for statement in statements:
+                        stmt = statement.strip()
+                        if not stmt:
+                            continue
+
+                        stmt_type = sqlparse.parse(stmt)[0].get_type()
+
+                        if stmt_type == 'CREATE':
+                            result = self.handle_create_statement(cur, stmt, username)
+                            results.append({
+                                "type": "message",
+                                "content": result["message"]
+                            })
+                        else:
+                            cur.execute(stmt)
+                            if cur.description:
+                                columns = [desc[0] for desc in cur.description]
+                                rows = cur.fetchall()
+                                # Use the custom JSON encoder here
+                                json_compatible_rows = json.loads(json.dumps(rows, cls=CustomJSONEncoder))
+                                results.append({
+                                    "type": "table",
+                                    "columns": columns,
+                                    "rows": json_compatible_rows
+                                })
+                            else:
+                                results.append({
+                                    "type": "message",
+                                    "content": f"{cur.rowcount} rows affected"
+                                })
+
+                    conn.commit()
+
+            # Add to query history
+            self.add_to_query_history(query, results, user_id)
+
+            return results
+
         except errors.InsufficientPrivilege as e:
             app.logger.error(f"Insufficient privilege: {str(e)}")
             raise errors.InsufficientPrivilege(f"Permission denied: {str(e)}")
         except Exception as e:
             app.logger.error(f"Error executing query: {str(e)}")
             raise
+
+
+    def handle_create_statement(self, cur, sql, username):
+        match = re.search(r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)', sql, re.IGNORECASE)
+        if not match:
+            raise ValueError("Invalid CREATE TABLE syntax")
+        
+        table_name = match.group(1)
+
+        if not re.match(r'^[a-z][a-z0-9_]{2,62}$', table_name):
+            raise ValueError("Invalid table name")
+
+        user_table_count = self.get_user_table_count(username)
+        if user_table_count >= MAX_TABLES_PER_USER:
+            raise ValueError("Table limit reached")
+
+        modified_sql = sql.replace(f'CREATE TABLE {table_name}', 
+                                   f'CREATE TABLE user_{username}.{table_name}')
+
+        cur.execute(modified_sql)
+        return {"message": f"Table {table_name} created successfully"}
+
+    def get_user_table_count(self, username):
+        return self.execute_with_retry("""
+            SELECT COUNT(*) 
+            FROM information_schema.tables 
+            WHERE table_schema = %s
+        """, (f'user_{username}',))[0]['count']
 
     def add_to_query_history(self, query, results, user_id):
         limited_results = results[:100] if results else []
@@ -302,11 +387,11 @@ class LLMSQLWrapper:
             ORDER BY timestamp DESC
             LIMIT {limit}
         """, (user_id,))
-    
+
     def ask_question(self, question, user_id, username, is_practice=False, category=None):
         if is_practice:
             return self.generate_practice_question(category, user_id, username)
-        
+
         app.logger.info(f"Received question: {question}")
 
         query_history = self.get_query_history(user_id, limit=3)
@@ -321,10 +406,10 @@ class LLMSQLWrapper:
         schema_str = str(self.get_schema(username))
         system_prompt = f"""You are an AI assistant that provides information about SQL queries and their results based on the query history.
         Database schema: {schema_str}
-        
+
         Recent query history:
         {history_str}
-        
+
         Answer the user's question based on the provided context. If you can't answer the question based on the given information, say so."""
 
         prompt = ChatPromptTemplate.from_messages([
@@ -365,7 +450,7 @@ class LLMSQLWrapper:
 
             Category: {category}
 
-            Tables: [Comma-separated list of relevant tables and their schema]
+            Tables: [Comma-separated list of relevant tables in the format user_schema.table_name]
 
             Hint: [Provide a hint here]
 
@@ -391,12 +476,12 @@ class LLMSQLWrapper:
             question_match = re.search(r'Question:\s*(.+?)\s*\n', generated_response, re.DOTALL)
             tables_match = re.search(r'Tables:\s*(.+?)\s*\n', generated_response)
             hint_match = re.search(r'Hint:\s*(.+?)\s*$', generated_response, re.DOTALL)
-            
+
             category = category_match.group(1).strip() if category_match else category
             question = question_match.group(1).strip() if question_match else ""
             tables = tables_match.group(1).strip() if tables_match else ""
             hint = hint_match.group(1).strip() if hint_match else ""
-            
+
             # Store the parsed question in the question_history table
             result = self.execute_with_retry("""
             INSERT INTO question_history (user_id, category, question, tables, hint)
@@ -405,7 +490,7 @@ class LLMSQLWrapper:
             """, (user_id, category, question, tables, hint))
             question_id = result[0]['id']
             app.logger.info(f"Generated question with ID: {question_id}")
-            
+
             return {
                 "id": str(question_id),
                 "category": category,
@@ -424,10 +509,10 @@ class LLMSQLWrapper:
             FROM question_history
             WHERE id = %s AND user_id = %s
         """, (question_id, user_id))
-            
+
     def validate_solution(self, sql_query, results, question_id, user_id, username):
         schema_str = str(self.get_schema(username))
-        
+
         # Handle default question
         if question_id == '-1':
             category = "Basic SQL Syntax"
@@ -442,7 +527,7 @@ class LLMSQLWrapper:
 
             if not question_result:
                 raise ValueError(f"No question found with id {question_id}")
-            
+
             category, question_text = question_result[0]['category'], question_result[0]['question']
 
         app.logger.info(f"Validating solution for question ID: {question_id}")
@@ -451,12 +536,12 @@ class LLMSQLWrapper:
 
         system_prompt = f"""You are an AI assistant that validates SQL solutions for practice questions.
         Database schema: {schema_str}
-        
+
         Question Category: {category}
         Question: {question_text}
         Submitted SQL query: {sql_query}
         Query results (top 10 records): {json.dumps(results[:10], indent=2)}
-        
+
         Analyze the submitted SQL query and its results. Provide concise feedback on:
         1. Correctness (Score /10): Does the query correctly solve the problem? Briefly explain why or why not.
         2. Efficiency (Score /10): Is the query optimized? Suggest improvements if needed.
@@ -466,9 +551,9 @@ class LLMSQLWrapper:
         Correctness (X/10): [Brief explanation]
         Efficiency (X/10): [Brief explanation]
         Style (X/10): [Brief explanation]
-        
+
         Overall feedback: [2-3 sentences summarizing the main points and offering encouragement]
-        
+
         Improvement suggestions:
         - [Bullet point 1]
         - [Bullet point 2]
@@ -490,7 +575,7 @@ class LLMSQLWrapper:
 
         try:
             feedback = conversation.predict()
-            
+
             # Parse the feedback to extract scores and overall feedback
             correctness_score = int(re.search(r'Correctness \((\d+)/10\)', feedback).group(1))
             efficiency_score = int(re.search(r'Efficiency \((\d+)/10\)', feedback).group(1))
@@ -509,10 +594,10 @@ class LLMSQLWrapper:
             """, (user_id, question_id if question_id != '-1' else None, correctness_score, efficiency_score, style_score, overall_feedback, pass_fail))
 
             app.logger.info(f"Inserted submission record for question ID: {question_id}, Pass/Fail: {pass_fail}")
-            
+
             # Include pass/fail in the feedback
             feedback += f"\n\nOverall Result: {'Pass' if pass_fail else 'Fail'}"
-            
+
             return feedback
         except Exception as e:
             app.logger.error(f"Error validating solution: {str(e)}")
@@ -550,7 +635,7 @@ class LLMSQLWrapper:
         ORDER BY 
             timestamp DESC
         """
-        
+
         try:
             result = self.execute_with_retry(query, (user_id,))
             app.logger.info(f"Raw query result: {result}")
@@ -562,7 +647,7 @@ class LLMSQLWrapper:
     def create_user_table(self, user_id, username):
         schema_name = f"user_{username}"
         table_name = f"sample_users"
-        
+
         create_table_query = f"""
         CREATE TABLE IF NOT EXISTS {schema_name}.{table_name} (
             id SERIAL PRIMARY KEY,
@@ -574,13 +659,13 @@ class LLMSQLWrapper:
         )
         """
         enable_rls_query = f"ALTER TABLE {schema_name}.{table_name} ENABLE ROW LEVEL SECURITY;"
-        
+
         create_rls_policy_query = f"""
         CREATE POLICY user_{username}_own_data_policy ON {schema_name}.{table_name}
         FOR ALL
         USING (current_user = '{username}');
         """
-        
+
         check_data_query = f"SELECT COUNT(*) FROM {schema_name}.{table_name}"
         insert_data_query = f"""
         INSERT INTO {schema_name}.{table_name} (name, email, age, city, registration_date)
@@ -630,7 +715,7 @@ class LLMSQLWrapper:
                     if not cur.fetchone():
                         cur.execute(f"CREATE ROLE {username} LOGIN PASSWORD %s", (password,))
                         app.logger.info(f"Created PostgreSQL role: {username}")
-                    
+
                     # Insert the user record
                     cur.execute("""
                         INSERT INTO users (username, password_hash, email)
@@ -638,21 +723,21 @@ class LLMSQLWrapper:
                         RETURNING id
                     """, (username, password_hash, email))
                     user_id = cur.fetchone()[0]
-                    
+
                     # Create user schema for the user and set the owner
                     cur.execute(f"CREATE SCHEMA IF NOT EXISTS user_{username} AUTHORIZATION {username}")
-         
+
                     # Grant necessary privileges
                     cur.execute(f"GRANT ALL ON SCHEMA user_{username} TO {username}")
                     cur.execute(f"ALTER DEFAULT PRIVILEGES IN SCHEMA user_{username} GRANT ALL ON TABLES TO {username}")
-                    
+
                     conn.commit()
                 self.user_passwords[username] = password
                 return user_id
         except psycopg2.IntegrityError:
             conn.rollback()
             raise ValueError("Username or email already exists")
-    
+
     def get_user(self, user_id):
         result = self.execute_with_retry("""
             SELECT id, username, password_hash
@@ -684,7 +769,7 @@ class LLMSQLWrapper:
                 return user
         app.logger.warning(f"Authentication failed for user {username}")
         return None
-    
+
     def clear_stored_passwords(self):
         self.user_passwords.clear()
         self.user_connections.clear()
@@ -709,10 +794,10 @@ def register():
     username = data.get('username')
     password = data.get('password')
     email = data.get('email')
-    
+
     if not username or not password or not email:
         return jsonify({"error": "Missing required fields"}), 400
-    
+
     try:
         user_id = wrapper.create_user(username, password, email)
         return jsonify({"message": "User registered successfully", "user_id": user_id}), 201
@@ -724,7 +809,7 @@ def login():
     data = request.json
     username = data.get('username')
     password = data.get('password')
-    
+
     user = wrapper.authenticate_user(username, password)
     if user:
         logger.debug(f"Before login_user, session: {session.items()}")
@@ -756,7 +841,6 @@ def get_submission_history():
     except Exception as e:
         app.logger.error(f"An error occurred while fetching submission history: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
 @app.route('/execute-sql', methods=['POST'])
 @login_required
 def execute_sql():
@@ -764,14 +848,18 @@ def execute_sql():
         sql = request.json.get('sql')
         if not sql:
             return jsonify({"error": "SQL query is not provided"}), 400
-        
-        result = wrapper.execute_query(sql, current_user.id, current_user.username)
-        
+
+        results = wrapper.execute_query(sql, current_user.id, current_user.username)
+
+        # Wrap the results in a single structure
         response = {
             "sql": sql,
-            "result": result
+            "result": {
+                "type": "multi",
+                "results": results
+            }
         }
-        return jsonify(response), 200
+        return json.dumps(response, cls=CustomJSONEncoder), 200, {'Content-Type': 'application/json'}
     except errors.InsufficientPrivilege as e:
         return jsonify({
             "error": "Insufficient Privilege",
@@ -786,7 +874,7 @@ def execute_sql():
             "query": sql
         }), 500
 
-
+    
 @app.route('/ask', methods=['POST'])
 @login_required
 def ask():
@@ -839,7 +927,7 @@ def submit_solution():
     app.logger.info("Received POST request to /submit-solution")
     app.logger.debug(f"Headers: {request.headers}")
     app.logger.debug(f"Body: {request.get_json()}")
-    
+
     data = request.json
     sql_query = data.get('sql')
     results = data.get('results')
@@ -853,10 +941,10 @@ def submit_solution():
 
     try:
         feedback = wrapper.validate_solution(sql_query, results, question_id, current_user.id, current_user.username)
-        
+
         # Add the submission to query_history
         wrapper.add_to_query_history(sql_query, results, current_user.id)
-        
+
         app.logger.info("Successfully validated solution and added to query history")
         return jsonify({"feedback": feedback}), 200
     except ValueError as ve:
@@ -869,11 +957,25 @@ def submit_solution():
 
 @app.route('/check-auth', methods=['GET'])
 def check_auth():
-    if current_user.is_authenticated:
-        return jsonify({"authenticated": True, "user_id": current_user.id}), 200
-    else:
-        return jsonify({"authenticated": False}), 401
-
+    app.logger.info("check_auth route called")
+    try:
+        app.logger.info(f"Is authenticated: {current_user.is_authenticated}")
+        if current_user.is_authenticated:
+            app.logger.info(f"User authenticated: {current_user.username}")
+            return jsonify({
+                "authenticated": True,
+                "username": current_user.username,
+                "user_id": current_user.id
+            }), 200
+        else:
+            app.logger.info("User not authenticated")
+            return jsonify({"authenticated": False, "message": "User not authenticated"}), 401
+    except Exception as e:
+        app.logger.error(f"Error in check_auth: {str(e)}")
+        return jsonify({"error": "Internal server error", "message": str(e)}), 500
+    
 if __name__ == '__main__':
     initialize_wrapper()  # Initialize the wrapper before starting the app
     app.run(debug=True, host='127.0.0.1', port=5000)
+
+    

@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
@@ -14,11 +13,19 @@ interface PracticeTabProps {
   submissionHistory: SubmissionHistoryItem[];
   fetchSubmissionHistory: () => Promise<void>;
   username: string;
+  sharedQuery: string;
+  setSharedQuery: React.Dispatch<React.SetStateAction<string>>;
 }
 
-const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory, fetchSubmissionHistory, username }) => {
+const PracticeTab: React.FC<PracticeTabProps> = ({ 
+  schemaData, 
+  submissionHistory, 
+  fetchSubmissionHistory, 
+  username,
+  sharedQuery,
+  setSharedQuery
+}) => {
   const userSchema = `user_${username}`;
-  const [sqlQuery, setSqlQuery] = useState('');
   const [queryResults, setQueryResults] = useState<QueryResult[]>([]);
   const [sqlError, setSqlError] = useState<SqlError | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -39,9 +46,9 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
       setCurrentQuestion(JSON.parse(savedQuestion));
     }
     if (savedQuery) {
-      setSqlQuery(savedQuery);
+      setSharedQuery(savedQuery);
     }
-  }, []);
+  }, [setSharedQuery]);
 
   const fetchQuestion = useCallback(async (category: string) => {
     setIsLoading(true);
@@ -69,7 +76,7 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
         const { id, category, question, tables, hint } = data.response;
         const newQuestion = { id, category, question, tables, hint };
         setCurrentQuestion(newQuestion);
-        setSqlQuery('');
+        setSharedQuery('');
         // Persist the new question and reset the query in localStorage
         localStorage.setItem('currentQuestion', JSON.stringify(newQuestion));
         localStorage.setItem('currentSqlQuery', '');
@@ -82,7 +89,7 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
     } finally {
       setIsLoading(false);
     }
-  }, [userSchema]);
+  }, [userSchema, setSharedQuery]);
 
   const handleSqlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,7 +101,7 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
       const res = await fetch('/api/execute-sql', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: sqlQuery }),
+        body: JSON.stringify({ sql: sharedQuery }),
       });
 
       const data = await res.json();
@@ -102,7 +109,7 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
       if (!res.ok) {
         throw new Error(JSON.stringify({
           message: data.error || 'Failed to execute SQL query',
-          query: sqlQuery,
+          query: sharedQuery,
           details: data.details || 'No additional details provided',
         }));
       }
@@ -123,7 +130,7 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
 
   const handleReturnToCategories = () => {
     setCurrentQuestion(null);
-    setSqlQuery('');
+    setSharedQuery('');
     setQueryResults([]);
     setSqlError(null);
     // Clear persisted question state
@@ -145,7 +152,7 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
 
     try {
       const feedback = await handleSolutionSubmit(
-        sqlQuery,
+        sharedQuery,
         currentQuestion.id.toString(),
         setChatHistory,
         setSqlError,
@@ -161,7 +168,7 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
       setShowFeedback(true);
 
       await fetchSubmissionHistory();
-      
+
       // Clear persisted question state after submission
       localStorage.removeItem('currentQuestion');
       localStorage.removeItem('currentSqlQuery');
@@ -179,7 +186,7 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
   const handleNextChallenge = async () => {
     setShowFeedback(false);
     setCurrentQuestion(null);
-    setSqlQuery('');
+    setSharedQuery('');
     // Clear persisted question state
     localStorage.removeItem('currentQuestion');
     localStorage.removeItem('currentSqlQuery');
@@ -191,10 +198,10 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
     }
   };
 
-  // Update localStorage whenever sqlQuery changes
+  // Update localStorage whenever sharedQuery changes
   useEffect(() => {
-    localStorage.setItem('currentSqlQuery', sqlQuery);
-  }, [sqlQuery]);
+    localStorage.setItem('currentSqlQuery', sharedQuery);
+  }, [sharedQuery]);
 
   return (
     <div>
@@ -203,7 +210,7 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
       ) : showFeedback ? (
         <FeedbackDisplay
           feedback={submissionFeedback || ''}
-          userSolution={sqlQuery}
+          userSolution={sharedQuery}
           correctSolution={correctSolution}
           onTryAgain={handleTryAgain}
           onNextChallenge={handleNextChallenge}
@@ -224,8 +231,8 @@ const PracticeTab: React.FC<PracticeTabProps> = ({ schemaData, submissionHistory
           </div>
           <PracticeSection
             currentQuestion={currentQuestion}
-            sqlQuery={sqlQuery}
-            setSqlQuery={setSqlQuery}
+            sqlQuery={sharedQuery}
+            setSqlQuery={setSharedQuery}
             handleSqlSubmit={handleSqlSubmit}
             onSolutionSubmit={onSolutionSubmit}
             handleCategorySelect={handleCategorySelect}

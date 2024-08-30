@@ -26,7 +26,6 @@ const PracticeSection: React.FC<PracticeSectionProps> = ({
 }) => {
   return (
     <div className="space-y-6">
-    
       {questionError ? (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
           <strong className="font-bold">Error: </strong>
@@ -58,6 +57,7 @@ const PracticeSection: React.FC<PracticeSectionProps> = ({
           name="practice_sql_editor"
           onChange={setSqlQuery}
           value={sqlQuery}
+          fontSize={18}
           setOptions={{
             enableBasicAutocompletion: true,
             enableLiveAutocompletion: true,
@@ -67,7 +67,7 @@ const PracticeSection: React.FC<PracticeSectionProps> = ({
           }}
           style={{
             width: '100%',
-            height: '200px',
+            height: '250px',
             border: '1px solid #e2e8f0',
             borderRadius: '0.375rem',
           }}
@@ -99,9 +99,7 @@ const PracticeSection: React.FC<PracticeSectionProps> = ({
 
       <QueryResults
         sqlError={sqlError}
-        queryResults={queryResults}
-        currentPage={currentPage}
-        setCurrentPage={setCurrentPage}
+        queryResult={queryResults}
         rowsPerPage={rowsPerPage}
       />
     </div>

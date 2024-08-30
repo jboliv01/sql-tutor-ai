@@ -1,37 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export async function GET(request: NextRequest) {
+  console.log('Logout API route called (GET)');
+  return handleLogoutRequest(request, 'GET');
+}
+
 export async function POST(request: NextRequest) {
-  console.log('Logout API route handler started');
+  console.log('Logout API route called (POST)');
+  return handleLogoutRequest(request, 'POST');
+}
+
+async function handleLogoutRequest(request: NextRequest, method: string) {
   try {
+    console.log(`Sending ${method} logout request to backend`);
     const backendResponse = await fetch('http://127.0.0.1:5000/logout', {
-      method: 'POST',
+      method: method,
       headers: {
         'Content-Type': 'application/json',
+        'Cookie': request.headers.get('cookie') || '',
       },
       credentials: 'include',
     });
 
+    console.log('Backend response status:', backendResponse.status);
+    console.log('Backend response headers:', Object.fromEntries(backendResponse.headers));
+
     if (!backendResponse.ok) {
-      const errorText = await backendResponse.text();
-      console.error('Error response from backend:', errorText);
-      throw new Error(`Failed to logout: ${backendResponse.status} ${backendResponse.statusText}. Error: ${errorText}`);
+      if (backendResponse.status === 401) {
+        console.error('Authentication error: User not logged in');
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+      }
+      throw new Error(`Backend request failed: ${backendResponse.status} ${backendResponse.statusText}`);
     }
 
     const data = await backendResponse.json();
-    console.log('Successful logout:', data);
+    console.log('Successful logout response:', data);
 
     const response = NextResponse.json(data);
-    response.cookies.set('session', '', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 0,
-      path: '/',
-    });
+    
+    // Forward any Set-Cookie headers from backend
+    const backendSetCookie = backendResponse.headers.get('Set-Cookie');
+    if (backendSetCookie) {
+      response.headers.set('Set-Cookie', backendSetCookie);
+    }
 
     return response;
   } catch (error) {
-    console.error('Detailed error:', error);
-    return NextResponse.json({ error: 'An error occurred during logout.', details: error.message }, { status: 500 });
+    console.error('Error during logout:', error);
+    return NextResponse.json(
+      { error: 'An error occurred during logout', details: error.message },
+      { status: 500 }
+    );
   }
 }

@@ -1,6 +1,4 @@
-// src/app/components/Logout.tsx
 'use client';
-
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import "../globals.css";
@@ -8,9 +6,12 @@ import "../globals.css";
 const LogoutButton: React.FC = () => {
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [error, setError] = useState('');
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
+    setError('');
+
     try {
       const response = await fetch('/api/logout', {
         method: 'POST',
@@ -19,26 +20,30 @@ const LogoutButton: React.FC = () => {
         },
         credentials: 'include',
       });
-  
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Logout failed');
       }
-  
+
+      const data = await response.json();
+      console.log('Logout successful:', data);
+
       // Clear the username from local storage
       localStorage.removeItem('username');
-  
-      // Successful logout
+
+      // Redirect to the login page after successful logout
       router.push('/login');
-    } catch (error) {
-      console.error('Logout error:', error);
-      alert('Failed to logout. Please try again.');
+    } catch (err) {
+      console.error('Logout error:', err);
+      setError(err.message);
     } finally {
       setIsLoggingOut(false);
     }
   };
 
   return (
+    <div>
       <button
         onClick={handleLogout}
         disabled={isLoggingOut}
@@ -48,6 +53,8 @@ const LogoutButton: React.FC = () => {
       >
         {isLoggingOut ? 'Logging out...' : 'Logout'}
       </button>
+      {error && <div className="text-red-500 text-sm mt-2">{error}</div>}
+    </div>
   );
 };
 
