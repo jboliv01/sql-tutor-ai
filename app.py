@@ -482,7 +482,7 @@ class LLMSQLWrapper:
             tables = tables_match.group(1).strip() if tables_match else ""
             hint = hint_match.group(1).strip() if hint_match else ""
 
-            # Store the parsed question in the question_history table
+            # Stfore the parsed question in the question_history table
             result = self.execute_with_retry("""
             INSERT INTO question_history (user_id, category, question, tables, hint)
             VALUES (%s, %s, %s, %s, %s)
@@ -974,6 +974,36 @@ def check_auth():
         app.logger.error(f"Error in check_auth: {str(e)}")
         return jsonify({"error": "Internal server error", "message": str(e)}), 500
     
+@app.route('/current-question', methods=['GET'])
+@login_required
+def get_current_question():
+    try:
+        # Fetch the most recent question from question_history
+        result = wrapper.execute_with_retry("""
+            SELECT id, category, question, tables, hint
+            FROM question_history
+            WHERE user_id = %s
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """, (current_user.id,))
+
+        if result:
+            question = result[0]
+            return jsonify({
+                "question": {
+                    "id": str(question['id']),
+                    "category": question['category'],
+                    "question": question['question'],
+                    "tables": question['tables'],
+                    "hint": question['hint']
+                }
+            }), 200
+        else:
+            return jsonify({"question": None}), 200
+    except Exception as e:
+        app.logger.error(f"Error fetching current question: {str(e)}")
+        return jsonify({"error": "An error occurred while fetching the current question"}), 500
+
 if __name__ == '__main__':
     initialize_wrapper()  # Initialize the wrapper before starting the app
     app.run(debug=True, host='127.0.0.1', port=5000)

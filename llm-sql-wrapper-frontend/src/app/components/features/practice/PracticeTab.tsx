@@ -38,17 +38,34 @@ const PracticeTab: React.FC<PracticeTabProps> = ({
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const rowsPerPage = 5;
 
-  useEffect(() => {
-    // Load persisted question state from localStorage when component mounts
-    const savedQuestion = localStorage.getItem('currentQuestion');
-    const savedQuery = localStorage.getItem('currentSqlQuery');
-    if (savedQuestion) {
-      setCurrentQuestion(JSON.parse(savedQuestion));
-    }
-    if (savedQuery) {
-      setSharedQuery(savedQuery);
+  const fetchCurrentQuestion = useCallback(async () => {
+    try {
+      const response = await fetch('/api/current-question', {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch current question');
+      }
+
+      const data = await response.json();
+
+      if (data.question) {
+        setCurrentQuestion(data.question);
+        setSharedQuery(''); // Reset the query when fetching a new question
+      } else {
+        setCurrentQuestion(null);
+      }
+    } catch (error) {
+      console.error('Error fetching current question:', error);
+      setQuestionError('Failed to load current question. Please try again.');
     }
   }, [setSharedQuery]);
+
+  useEffect(() => {
+    fetchCurrentQuestion();
+  }, [fetchCurrentQuestion]);
 
   const fetchQuestion = useCallback(async (category: string) => {
     setIsLoading(true);
@@ -77,9 +94,6 @@ const PracticeTab: React.FC<PracticeTabProps> = ({
         const newQuestion = { id, category, question, tables, hint };
         setCurrentQuestion(newQuestion);
         setSharedQuery('');
-        // Persist the new question and reset the query in localStorage
-        localStorage.setItem('currentQuestion', JSON.stringify(newQuestion));
-        localStorage.setItem('currentSqlQuery', '');
       } else {
         throw new Error('Unexpected response format from server');
       }
@@ -133,9 +147,6 @@ const PracticeTab: React.FC<PracticeTabProps> = ({
     setSharedQuery('');
     setQueryResults([]);
     setSqlError(null);
-    // Clear persisted question state
-    localStorage.removeItem('currentQuestion');
-    localStorage.removeItem('currentSqlQuery');
   };
 
   const onSolutionSubmit = async () => {
@@ -168,10 +179,6 @@ const PracticeTab: React.FC<PracticeTabProps> = ({
       setShowFeedback(true);
 
       await fetchSubmissionHistory();
-
-      // Clear persisted question state after submission
-      localStorage.removeItem('currentQuestion');
-      localStorage.removeItem('currentSqlQuery');
     } catch (error) {
       console.error('Error submitting solution:', error);
     } finally {
@@ -187,9 +194,7 @@ const PracticeTab: React.FC<PracticeTabProps> = ({
     setShowFeedback(false);
     setCurrentQuestion(null);
     setSharedQuery('');
-    // Clear persisted question state
-    localStorage.removeItem('currentQuestion');
-    localStorage.removeItem('currentSqlQuery');
+    await fetchCurrentQuestion(); // Fetch the next question
   };
 
   const onRetryQuestion = () => {
@@ -197,11 +202,6 @@ const PracticeTab: React.FC<PracticeTabProps> = ({
       fetchQuestion(currentQuestion.category);
     }
   };
-
-  // Update localStorage whenever sharedQuery changes
-  useEffect(() => {
-    localStorage.setItem('currentSqlQuery', sharedQuery);
-  }, [sharedQuery]);
 
   return (
     <div>
