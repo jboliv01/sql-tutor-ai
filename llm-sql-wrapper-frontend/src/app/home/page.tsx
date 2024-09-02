@@ -92,8 +92,9 @@ export function Home() {
   return (
     <main>
       <div className="space-y-6">
-        <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="bg-white rounded-sm shadow-xl shadow-gray-200 p-6">
           <TabNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
+          <hr className="border-t border-gray-300 my-4 w-full" /> {/* Added dividing line */}
           {activeTab === 'practice' && (
             <PracticeTab
               schemaData={schemaData}

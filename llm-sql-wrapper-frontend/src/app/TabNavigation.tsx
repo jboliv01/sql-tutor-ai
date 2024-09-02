@@ -1,5 +1,4 @@
 'use client';
-
 import React from 'react';
 import { MessageSquare, Database, Code, FileText } from 'lucide-react';
 
@@ -17,42 +16,44 @@ const TabNavigation: React.FC<TabNavigationProps> = ({ activeTab, setActiveTab }
   ];
 
   return (
-    <div className="relative flex justify-center p-4 rounded-lg mb-6 bg-white bg-opacity-20">
-      {tabs.map((tab) => {
-        const Icon = tab.icon;
-        return (
-          <button
-            key={tab.id}
-            className={`
-              flex items-center py-3 px-6 font-medium text-lg focus:outline-none
-              transition-all duration-200 ease-in-out
-              rounded-lg mx-1
-              transform hover:scale-105 hover:shadow-md
-              ${
-                activeTab === tab.id
-                  ? 'text-indigo-600 bg-indigo-50 shadow-inner'
-                  : 'text-gray-500 hover:text-indigo-500 hover:bg-indigo-50'
-              }
-            `}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            <Icon 
+    <nav className="relative mb-8 flex flex-col items-center" aria-label="Main navigation">
+      <div className="inline-flex flex-wrap justify-center gap-3 p-3 rounded-lg bg-white pb-6 pt-6">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
               className={`
-                mr-2 h-5 w-5 transition-colors duration-200
-                ${activeTab === tab.id ? 'text-indigo-500' : 'text-gray-400 group-hover:text-indigo-400'}
-              `} 
-            />
-            <span className="relative">
-              {tab.label}
-              {activeTab === tab.id && (
-                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-500 transition-all duration-200"></span>
-              )}
-            </span>
-          </button>
-        )
-      })}
-      <div className="absolute bottom-0 left-0 w-full h-0.5 bg-gray-100"></div>
-    </div>
+                flex items-center py-3 px-6 font-medium text-lg
+                rounded-md transition-all duration-200 ease-in-out
+                focus:outline-none
+                ${isActive
+                  ? 'bg-indigo-500 text-white shadow-lg'
+                  : 'text-gray-600 hover:bg-indigo-50 shadow-lg hover:text-indigo-600 border border-gray-200'
+                }
+              `}
+              style={{
+                boxShadow: isActive
+                  ? '0 0px 20px 5px rgba(99, 102, 241, 0.4), 0 0px 6px -2px rgba(99, 102, 241, 0.1)'
+                  : '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+              }}
+              onClick={() => setActiveTab(tab.id)}
+              aria-current={isActive ? 'page' : undefined}
+            >
+              <Icon
+                className={`
+                  mr-3 h-6 w-6
+                  ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-indigo-500'}
+                `}
+                aria-hidden="true"
+              />
+              <span>{tab.label}</span>
+            </button>
+          )
+        })}
+      </div>
+    </nav>
   );
 };
 

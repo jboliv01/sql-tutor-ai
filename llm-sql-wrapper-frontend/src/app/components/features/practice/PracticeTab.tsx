@@ -38,6 +38,11 @@ const PracticeTab: React.FC<PracticeTabProps> = ({
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const rowsPerPage = 5;
 
+  useEffect(() => {
+    // Set the default query when the component mounts or username changes
+    setSharedQuery(`SELECT * FROM user_${username}.sample_users LIMIT 5;`);
+  }, [username, setSharedQuery]);
+
   const fetchCurrentQuestion = useCallback(async () => {
     try {
       const response = await fetch('/api/current-question', {
@@ -53,7 +58,6 @@ const PracticeTab: React.FC<PracticeTabProps> = ({
 
       if (data.question) {
         setCurrentQuestion(data.question);
-        setSharedQuery(''); // Reset the query when fetching a new question
       } else {
         setCurrentQuestion(null);
       }
@@ -61,7 +65,7 @@ const PracticeTab: React.FC<PracticeTabProps> = ({
       console.error('Error fetching current question:', error);
       setQuestionError('Failed to load current question. Please try again.');
     }
-  }, [setSharedQuery]);
+  }, []);
 
   useEffect(() => {
     fetchCurrentQuestion();
@@ -93,7 +97,6 @@ const PracticeTab: React.FC<PracticeTabProps> = ({
         const { id, category, question, tables, hint } = data.response;
         const newQuestion = { id, category, question, tables, hint };
         setCurrentQuestion(newQuestion);
-        setSharedQuery('');
       } else {
         throw new Error('Unexpected response format from server');
       }
@@ -103,7 +106,7 @@ const PracticeTab: React.FC<PracticeTabProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [userSchema, setSharedQuery]);
+  }, [userSchema]);
 
   const handleSqlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,7 +147,6 @@ const PracticeTab: React.FC<PracticeTabProps> = ({
 
   const handleReturnToCategories = () => {
     setCurrentQuestion(null);
-    setSharedQuery('');
     setQueryResults([]);
     setSqlError(null);
   };
@@ -193,7 +195,6 @@ const PracticeTab: React.FC<PracticeTabProps> = ({
   const handleNextChallenge = async () => {
     setShowFeedback(false);
     setCurrentQuestion(null);
-    setSharedQuery('');
     await fetchCurrentQuestion(); // Fetch the next question
   };
 
