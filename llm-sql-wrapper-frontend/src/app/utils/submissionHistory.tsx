@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useMemo } from 'react';
 import { Check, X, Loader, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Rectangle } from 'recharts';
@@ -92,9 +94,8 @@ const SubmissionHistory: React.FC<SubmissionHistoryProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-4 mb-20">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold text-gray-700">Submission History</h2>
+    <div className="bg-white rounded-lg p-4 mb-20">
+      <div className="flex justify-end items-center mb-4">
         <button
           onClick={onRefresh}
           className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300 flex items-center"

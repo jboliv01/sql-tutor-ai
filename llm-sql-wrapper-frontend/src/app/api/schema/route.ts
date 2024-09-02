@@ -1,18 +1,12 @@
-// src/app/api/schema/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
-  const motherduckToken = process.env.MOTHERDUCK_TOKEN;
-
-  if (!motherduckToken) {
-    return NextResponse.json({ error: 'MotherDuck token is not configured' }, { status: 500 });
-  }
-
   try {
     const backendResponse = await fetch('http://127.0.0.1:5000/schema', {
       method: 'GET',
+      credentials: 'include',
       headers: {
-        'X-MotherDuck-Token': motherduckToken,
+        'Cookie': request.headers.get('cookie') || '',
       },
     });
 
@@ -21,7 +15,16 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await backendResponse.json();
-    return NextResponse.json(data);
+    
+    const response = NextResponse.json(data);
+
+    // Forward any Set-Cookie headers from the backend
+    const backendSetCookie = backendResponse.headers.get('Set-Cookie');
+    if (backendSetCookie) {
+      response.headers.set('Set-Cookie', backendSetCookie);
+    }
+
+    return response;
   } catch (error) {
     console.error('Error fetching schema:', error);
     return NextResponse.json(
