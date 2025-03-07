@@ -2,3 +2,4 @@
 .env.local
 /flask_session
 
+llm-sql-wrapper-frontend/.env
