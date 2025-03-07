@@ -1,11 +1,13 @@
 # auth.py
 
-from flask import Flask, request, jsonify, url_for, redirect, current_app
+from flask import Blueprint, request, jsonify, url_for, redirect, current_app
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from authlib.integrations.flask_client import OAuth
 from itsdangerous import URLSafeTimedSerializer
 from flask_mail import Mail, Message
+from jose import jwt
+import os
 
 db = SQLAlchemy()
 login_manager = LoginManager()
@@ -49,7 +51,6 @@ def init_auth(app):
         client_kwargs={'scope': 'openid email profile'},
     )
 
-    from flask import Blueprint
     auth = Blueprint('auth', __name__)
 
     @auth.route('/login/email', methods=['POST'])
@@ -126,6 +127,30 @@ def init_auth(app):
             "email": current_user.email,
             "name": current_user.name
         }), 200
+
+    @auth.route('/verify-session', methods=['POST'])
+    def verify_session():
+        token = request.json.get('token')
+        if not token:
+            return jsonify({"error": "No token provided"}), 400
+
+        try:
+            # Verify and decode the token
+            decoded = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
+            user_id = decoded.get('sub')
+            
+            # Fetch user from database
+            user = User.query.get(user_id)
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            return jsonify({
+                "id": user.id,
+                "email": user.email,
+                "name": user.name
+            }), 200
+        except jwt.JWTError:
+            return jsonify({"error": "Invalid token"}), 401
 
     app.register_blueprint(auth, url_prefix='/auth')
 

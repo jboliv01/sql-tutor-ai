@@ -1,3 +1,5 @@
+// llm-sql-wrapper-frontend/src/app/api/check-auth/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {

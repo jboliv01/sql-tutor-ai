@@ -43,7 +43,7 @@ app.config['MAIL_DEFAULT_SENDER'] = 'noreply@yourdomain.com'
 
 Session(app)
 
-CORS(app, resources={r"/*": {"origins": "http://127.0.0.1:5000", "supports_credentials": True}})
+CORS(app, resources={r"/*": {"origins": "http://127.0.0.1:3000", "supports_credentials": True}})
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
