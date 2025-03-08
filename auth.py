@@ -151,6 +151,42 @@ def init_auth(app):
             }), 200
         except jwt.JWTError:
             return jsonify({"error": "Invalid token"}), 401
+            
+    @auth.route('/nextauth-login', methods=['POST'])
+    def nextauth_login():
+        try:
+            data = request.json
+            email = data.get('email')
+            name = data.get('name')
+            
+            if not email:
+                return jsonify({"error": "Email is required"}), 400
+                
+            # Find or create user
+            user = User.query.filter_by(email=email).first()
+            if not user:
+                user = User(email=email, name=name)
+                db.session.add(user)
+                db.session.commit()
+            elif name and user.name != name:
+                user.name = name
+                db.session.commit()
+                
+            # Log the user in
+            login_user(user, remember=True)
+            
+            response = jsonify({
+                "authenticated": True,
+                "id": user.id,
+                "email": user.email,
+                "name": user.name
+            })
+            
+            # Ensure the cookie is set properly for cross-site requests
+            return response, 200
+        except Exception as e:
+            current_app.logger.error(f"Error in nextauth-login: {str(e)}")
+            return jsonify({"error": "Authentication failed"}), 500
 
     app.register_blueprint(auth, url_prefix='/auth')
 

@@ -11,12 +11,19 @@ export async function GET(request: NextRequest) {
     const response = await fetch(`${backendUrl}/check-auth`, {
       credentials: 'include',
       headers: {
-        'Cookie': request.headers.get('cookie') || ''
+        'Content-Type': 'application/json'
       }
     });
 
     console.log(`Backend responded with status: ${response.status}`);
 
+    // If we get a 401, it just means we're not authenticated, which is a valid state
+    if (response.status === 401) {
+      console.log('User is not authenticated');
+      return NextResponse.json({ authenticated: false });
+    }
+    
+    // For other error codes, we still want to throw an error
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Error response from backend: ${errorText}`);

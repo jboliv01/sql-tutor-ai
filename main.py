@@ -25,6 +25,7 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', os.urandom(24))
 app.config['SESSION_COOKIE_SECURE'] = False  # Set to True for production with HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow cookies to work on localhost
 
 # SQLAlchemy configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
@@ -43,7 +44,7 @@ app.config['MAIL_DEFAULT_SENDER'] = 'noreply@yourdomain.com'
 
 Session(app)
 
-CORS(app, resources={r"/*": {"origins": "http://127.0.0.1:3000", "supports_credentials": True}})
+CORS(app, resources={r"/*": {"origins": ["http://127.0.0.1:3000", "http://localhost:3000"], "supports_credentials": True, "allow_headers": ["Content-Type", "X-Auth-Token", "Authorization"], "expose_headers": ["Content-Type", "X-Auth-Token"]}}, supports_credentials=True)
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -220,6 +221,17 @@ def home():
         return jsonify({"message": f"Welcome, {current_user.email}!"}), 200
     else:
         return jsonify({"message": "Please log in"}), 200
+
+@app.route('/check-auth')
+def check_auth():
+    if current_user.is_authenticated:
+        return jsonify({
+            "authenticated": True,
+            "username": current_user.email,
+            "user_id": current_user.id
+        }), 200
+    else:
+        return jsonify({"authenticated": False}), 401
 
 @app.errorhandler(404)
 def not_found(error):
